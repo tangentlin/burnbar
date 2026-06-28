@@ -12,6 +12,10 @@ app.whenReady().then(async () => {
   await trayManager.initializeTray();
 });
 
+app.on("before-quit", () => {
+  trayManager.dispose();
+});
+
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();

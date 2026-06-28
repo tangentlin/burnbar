@@ -4,8 +4,11 @@ import { fileURLToPath } from "node:url";
 import type { UsageData } from "./types.js";
 import { getUserUsage } from "./usage.js";
 
+const REFRESH_INTERVAL_MS = 60_000;
+
 export class TrayManager {
   private tray: Tray | null = null;
+  private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   async initializeTray(): Promise<void> {
     const __filename = fileURLToPath(import.meta.url);
@@ -22,30 +25,54 @@ export class TrayManager {
       return;
     }
 
-    this.tray.setToolTip("Claude Usage Tracker");
+    this.tray.setToolTip("Burnbar");
 
     if (process.platform !== "darwin") {
       this.tray.on("click", () => {
-        this.refreshTrayMenu();
         this.tray?.popUpContextMenu();
       });
     }
 
     await this.refreshTrayMenu();
+
+    // Keep today's cost in the menu bar live without requiring a click.
+    this.refreshTimer = setInterval(() => {
+      void this.refreshTrayMenu();
+    }, REFRESH_INTERVAL_MS);
+  }
+
+  dispose(): void {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
   }
 
   async refreshTrayMenu(): Promise<void> {
+    if (!this.tray) {
+      return;
+    }
+
     const usageData = await getUserUsage();
+    this.updateTitle(usageData);
+
     const menuItems = this.buildMenuItems(usageData);
     const contextMenu = Menu.buildFromTemplate(menuItems);
+    this.tray.setContextMenu(contextMenu);
+  }
 
-    this.tray?.setContextMenu(contextMenu);
-
-    if (process.platform === "darwin" && this.tray) {
-      contextMenu.on("menu-will-show", () => {
-        this.refreshTrayMenu();
-      });
+  private updateTitle(usageData: UsageData): void {
+    if (process.platform !== "darwin" || !this.tray) {
+      return;
     }
+
+    // Show today's cost beside the icon; clear it when there's nothing to show.
+    if (usageData.error || !usageData.daily) {
+      this.tray.setTitle("");
+      return;
+    }
+
+    this.tray.setTitle(` $${usageData.daily.cost.toFixed(2)}`);
   }
 
   private buildMenuItems(usageData: UsageData): MenuItemConstructorOptions[] {
