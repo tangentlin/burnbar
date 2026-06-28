@@ -1,138 +1,58 @@
-🎉 **Special Thanks** to [ccusage](https://github.com/ryoppippi/ccusage) for providing the core usage analysis functionality!
+# 🔥 Burnbar
 
-# ![screenshot](assets/icon.png) Claude Usage Tracker for Mac ![screenshot](assets/icon.png)
+A macOS menu bar app that shows your **Claude Code token burn and cost** at a glance — today's spend sits right in the menu bar, with all-time totals one click away.
 
-🍊 macOS menu bar app to visualize Claude Code usage costs
+> Forked from [penicillin0/claude-usage-tracker-for-mac](https://github.com/penicillin0/claude-usage-tracker-for-mac) (MIT) and reworked to ride the current [ccusage](https://github.com/ryoppippi/ccusage) CLI. 🎉 Huge thanks to ccusage for the underlying usage analysis.
 
-![screenshot](assets/menu-screenshot.png)
+## Why Burnbar
 
-## Overview
+- 🔥 **Live in the menu bar** — today's cost is always visible, no clicking required
+- 📊 **Today + all-time** token counts and cost
+- 🌐 **Backend-agnostic** — it reads your local `~/.claude` logs via ccusage, so it works the same whether Claude Code runs on the Anthropic API, **Google Vertex AI**, or **AWS Bedrock**
+- 🔒 **Private** — only reads local files; nothing leaves your machine
+- ⚡ **Tiny** — a thin Electron tray app over the ccusage CLI
 
-A clean, lightweight menu bar application that displays your Claude Code usage statistics directly in the macOS menu bar. Built with TypeScript and Electron, utilizing the [ccusage](https://www.npmjs.com/package/ccusage) library to read local usage history files.
+## How it works
 
-## Features
+Burnbar shells out to the bundled `ccusage` CLI (`ccusage daily --json --mode calculate`), which parses Claude Code's local session logs and prices them per model. Burnbar reads the token and cost totals and renders them in the tray, refreshing on an interval. No accounts, no API keys, no network calls.
 
-- 📊 **Real-time Usage Display**: Shows today's and all-time usage in the menu bar
-- 💰 **Cost Tracking**: Displays both token count and cost information
-- 🔒 **Privacy-First**: Only reads local files, no data transmission
-- 🎨 **Native Design**: Follows macOS design guidelines with orange accent color
-- ⚡ **Lightweight**: Minimal resource usage with efficient architecture
-
-
-## Installation
-
-### Via 🍺 Homebrew (Recommended)
+## Develop
 
 ```bash
-# Add the tap
-brew tap penicillin0/claude-usage-tracker
-
-# Install the app
-brew install claude-usage-tracker
+pnpm install
+pnpm dev      # build + launch
 ```
 
-To update to the latest version:
+Other scripts:
 
 ```bash
-# Update the tap
-brew update
-
-# Upgrade the app
-brew upgrade claude-usage-tracker
+pnpm build       # compile TypeScript -> dist/
+pnpm start       # launch the built app
+pnpm check       # Biome lint + format check
 ```
 
-### Direct Download
-
-Download the latest release from the [GitHub Releases](https://github.com/penicillin0/claude-usage-tracker-for-mac/releases) page.
-
-### Build from Source
+## Build a distributable
 
 ```bash
-# Clone the repository
-git clone https://github.com/penicillin0/claude-usage-tracker-for-mac.git
-cd claude-usage-tracker-for-mac
-
-# Install dependencies
-npm install
-
-# Build and run
-npm run build
-npm start
+pnpm dist:mac
 ```
 
-
-### via 🍎 Apple Store 🍎
-
-coming soon...
-
-
-## Development
-
-```bash
-# Development mode (with auto-reload)
-npm run dev
-
-# Build TypeScript
-npm run build
-
-# Code quality
-npm run lint      # Check linting
-npm run format    # Format code
-npm run check     # Run all checks
-```
+> Signing and notarization are **off** by default (`build.mac.identity: null`). To distribute to other Macs, set your own Apple Developer identity and re-enable notarization in `package.json` → `build.mac`.
 
 ## Architecture
 
-The application follows a clean, modular architecture:
-
-```
+```text
 src/
-├── main.ts     # Application entry point
-├── types.ts    # TypeScript type definitions
-├── usage.ts    # Usage data fetching logic
-└── tray.ts     # Tray menu management
+├── main.ts     # Electron entry point
+├── tray.ts     # menu bar item + menu rendering
+├── usage.ts    # spawns the ccusage CLI, parses totals
+└── types.ts    # shared types
 ```
-
-## Technology Stack
-
-- **TypeScript** - Type-safe development
-- **Electron** - Cross-platform desktop app framework
-- **ccusage** - Claude Code usage analysis library
-- **Biome** - Fast linting and formatting
-
-
-## Requirements
-
-- macOS (primary target platform)
-- Node.js 18+
-- Active Claude Code usage history
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## Disclaimer
 
-⚠️ **Important Notice**
-
-This application is an **unofficial**, third-party tool and is **NOT affiliated with, endorsed by, or supported by Anthropic**.
-
-- **Accuracy**: While we strive for accuracy, the usage data displayed may not match your official Anthropic billing. Always refer to your official Anthropic account for authoritative usage and billing information.
-
-- **Data Source**: This app reads local Claude Code usage files via the `ccusage` library. The accuracy depends on the completeness and correctness of these local files.
-
-- **No Warranty**: This software is provided "as is" without any warranty. Use at your own risk.
-
-- **Privacy**: This app only reads local files and does not transmit any data to external servers. However, users should verify the source code if privacy is a concern.
-
-- **Billing Responsibility**: Users are solely responsible for monitoring their actual Anthropic usage and billing through official channels.
-
-For official usage tracking and billing information, please visit [Anthropic's official website](https://console.anthropic.com/).
+Unofficial, third-party tool — **not affiliated with or endorsed by Anthropic**. Displayed usage is computed from local ccusage data and may not match official billing; always confirm spend through your provider (Anthropic / Google Cloud / AWS). Provided "as is", without warranty.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE). Original work © Nakamura Ayahito; fork modifications © tangentlin.

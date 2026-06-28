@@ -1,7 +1,7 @@
 {
-  "name": "claude-usage-tracker-for-mac",
-  "version": "0.0.8",
-  "description": "Claude Codeの使用料金を可視化する Mac用のメニューバーアプリケーション",
+  "name": "burnbar",
+  "version": "0.1.0",
+  "description": "macOS menu bar app that shows your Claude Code token burn and cost in real time, powered by ccusage. Backend-agnostic — works with Anthropic, Vertex AI, and Bedrock.",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
@@ -14,14 +14,25 @@
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:mac:universal": "npm run build && electron-builder --mac --universal"
+    "dist": "pnpm build && electron-builder",
+    "dist:mac": "pnpm build && electron-builder --mac",
+    "dist:mac:universal": "pnpm build && electron-builder --mac --universal"
   },
-  "keywords": ["claude", "menubar", "electron", "macos"],
-  "author": "penicillin0",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ccusage",
+    "menubar",
+    "electron",
+    "macos",
+    "usage",
+    "cost"
+  ],
+  "author": "tangentlin",
   "license": "MIT",
+  "pnpm": {
+    "onlyBuiltDependencies": ["@biomejs/biome", "electron"]
+  },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
     "@types/node": "22.15.29",
@@ -30,12 +41,11 @@
     "typescript": "5.8.3"
   },
   "dependencies": {
-    "canvas": "3.1.2",
-    "ccusage": "0.8.0"
+    "ccusage": "20.0.14"
   },
   "build": {
-    "appId": "com.penicillin0.claude-usage-tracker",
-    "productName": "Claude Usage Tracker",
+    "appId": "com.tangentlin.burnbar",
+    "productName": "Burnbar",
     "directories": {
       "output": "release"
     },
@@ -45,8 +55,8 @@
       "icon": "build/icons/icon.png",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "identity": "Ayahito Nakamura (52BYYDA79X)",
-      "notarize": true,
+      "identity": null,
+      "notarize": false,
       "extendInfo": {
         "LSUIElement": true
       },
