@@ -2,90 +2,52 @@
   "name": "burnbar",
   "version": "0.1.0",
   "description": "macOS menu bar app that shows your Claude Code token burn and cost in real time, powered by ccusage. Backend-agnostic — works with Anthropic, Vertex AI, and Bedrock.",
+  "keywords": [
+    "ccusage",
+    "claude",
+    "claude-code",
+    "cost",
+    "electron",
+    "macos",
+    "menubar",
+    "usage"
+  ],
+  "license": "MIT",
+  "author": "tangentlin",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
     "start": "electron .",
     "dev": "tsc && electron .",
-    "lint": "biome lint .",
-    "lint:fix": "biome lint --write .",
-    "format": "biome format --write .",
-    "check": "biome check .",
-    "check:fix": "biome check --write .",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt --check",
+    "format:write": "oxfmt",
+    "check": "oxlint && oxfmt --check",
+    "check:fix": "oxlint --fix && oxfmt",
     "typecheck": "tsc --noEmit",
     "icon": "node scripts/generate-icons.mjs",
-    "dist": "pnpm build && electron-builder",
-    "dist:mac": "pnpm build && electron-builder --mac",
-    "dist:mac:universal": "pnpm build && electron-builder --mac --universal"
-  },
-  "keywords": [
-    "claude",
-    "claude-code",
-    "ccusage",
-    "menubar",
-    "electron",
-    "macos",
-    "usage",
-    "cost"
-  ],
-  "author": "tangentlin",
-  "license": "MIT",
-  "pnpm": {
-    "onlyBuiltDependencies": ["@biomejs/biome", "electron"]
-  },
-  "devDependencies": {
-    "@biomejs/biome": "1.9.4",
-    "@types/node": "22.15.29",
-    "electron": "36.4.0",
-    "electron-builder": "26.0.12",
-    "typescript": "5.8.3"
+    "dist": "pnpm build && electron-builder --config electron-builder.config.cjs",
+    "dist:mac": "pnpm build && electron-builder --mac --config electron-builder.config.cjs",
+    "dist:mac:universal": "pnpm build && electron-builder --mac --universal --config electron-builder.config.cjs"
   },
   "dependencies": {
     "ccusage": "20.0.14"
   },
-  "build": {
-    "appId": "com.tangentlin.burnbar",
-    "productName": "Burnbar",
-    "directories": {
-      "output": "release"
-    },
-    "files": ["dist/**/*", "assets/**/*", "node_modules/**/*", "package.json"],
-    "mac": {
-      "category": "public.app-category.productivity",
-      "icon": "build/icons/icon.png",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "identity": null,
-      "notarize": false,
-      "extendInfo": {
-        "LSUIElement": true
-      },
-      "target": [
-        {
-          "target": "dmg",
-          "arch": ["x64", "arm64"]
-        },
-        {
-          "target": "zip",
-          "arch": ["x64", "arm64"]
-        }
-      ]
-    },
-    "dmg": {
-      "contents": [
-        {
-          "x": 410,
-          "y": 150,
-          "type": "link",
-          "path": "/Applications"
-        },
-        {
-          "x": 130,
-          "y": 150,
-          "type": "file"
-        }
-      ]
-    }
+  "devDependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "@types/node": "24.13.2",
+    "electron": "42.5.0",
+    "electron-builder": "26.15.6",
+    "oxfmt": "0.56.0",
+    "oxlint": "1.71.0",
+    "typescript": "6.0.3"
+  },
+  "packageManager": "pnpm@10.13.1",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
   }
 }

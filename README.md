@@ -12,6 +12,10 @@ A macOS menu bar app that shows your **Claude Code token burn and cost** at a gl
 - 🔒 **Private** — only reads local files; nothing leaves your machine
 - ⚡ **Tiny** — a thin Electron tray app over the ccusage CLI
 
+## Requirements
+
+macOS **Monterey (12) or later** — Burnbar runs on Electron 42, whose Chromium base dropped support for Big Sur (11). Ventura (13)+ is the practically tested baseline.
+
 ## How it works
 
 Burnbar shells out to the bundled `ccusage` CLI (`ccusage daily --json --mode calculate`), which parses Claude Code's local session logs and prices them per model. Burnbar reads the token and cost totals and renders them in the tray, refreshing on an interval. No accounts, no API keys, no network calls.
@@ -28,7 +32,8 @@ Other scripts:
 ```bash
 pnpm build       # compile TypeScript -> dist/
 pnpm start       # launch the built app
-pnpm check       # Biome lint + format check
+pnpm check       # oxlint + oxfmt format check
+pnpm check:fix   # oxlint --fix + oxfmt write
 ```
 
 ## Build a distributable
@@ -37,7 +42,28 @@ pnpm check       # Biome lint + format check
 pnpm dist:mac
 ```
 
-> Signing and notarization are **off** by default (`build.mac.identity: null`). To distribute to other Macs, set your own Apple Developer identity and re-enable notarization in `package.json` → `build.mac`.
+With no credentials set, this produces an **unsigned** `.dmg`/`.zip` — fine for local use, but Gatekeeper will block it on other Macs.
+
+### Signing & notarization
+
+Signing and notarization are driven by environment variables (configured in [electron-builder.config.cjs](electron-builder.config.cjs)), so the build needs no edits to ship. You need a paid **Apple Developer** account and a **Developer ID Application** certificate.
+
+```bash
+# Signing — point at your Developer ID cert...
+export CSC_LINK="/path/to/DeveloperID.p12"   # or a base64 of the .p12
+export CSC_KEY_PASSWORD="cert-password"
+# ...or, if the identity is already in your login keychain:
+# export CSC_NAME="Developer ID Application: Your Name (TEAMID)"
+
+# Notarization — an app-specific password from appleid.apple.com:
+export APPLE_ID="you@example.com"
+export APPLE_APP_SPECIFIC_PASSWORD="abcd-efgh-ijkl-mnop"
+export APPLE_TEAM_ID="YOURTEAMID"
+
+pnpm dist:mac
+```
+
+When signing vars are present the app is signed; when the notary vars are present it is also notarized and stapled, so it passes Gatekeeper on a second Mac. Omit either set and that step is skipped without failing the build.
 
 ## Architecture
 

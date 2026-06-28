@@ -1,10 +1,4 @@
-import {
-  Menu,
-  type MenuItemConstructorOptions,
-  Tray,
-  app,
-  nativeImage,
-} from "electron";
+import { Menu, type MenuItemConstructorOptions, Tray, app, nativeImage } from "electron";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { UsageData } from "./types.js";
@@ -109,10 +103,7 @@ export class TrayManager {
     return menuItems;
   }
 
-  private addDailyUsageItems(
-    menuItems: MenuItemConstructorOptions[],
-    usageData: UsageData,
-  ): void {
+  private addDailyUsageItems(menuItems: MenuItemConstructorOptions[], usageData: UsageData): void {
     menuItems.push({
       label: "Today's Usage",
       enabled: false,
@@ -135,10 +126,7 @@ export class TrayManager {
     }
   }
 
-  private addTotalUsageItems(
-    menuItems: MenuItemConstructorOptions[],
-    usageData: UsageData,
-  ): void {
+  private addTotalUsageItems(menuItems: MenuItemConstructorOptions[], usageData: UsageData): void {
     menuItems.push({
       label: "All-Time Usage",
       enabled: false,
