@@ -38,7 +38,7 @@
     "@biomejs/biome": "1.9.4",
     "@types/node": "22.15.29",
     "electron": "36.4.0",
-    "electron-builder": "26.0.12",
+    "electron-builder": "26.15.3",
     "typescript": "5.8.3"
   },
   "dependencies": {
