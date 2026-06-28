@@ -41,7 +41,9 @@ When you spot a code-smell next to your work:
 
 ## Project Overview
 
-macOS menu bar application that visualizes Claude Code usage costs using the `ccusage` npm library to read local usage history files. Built with TypeScript, Electron, and follows ES module architecture.
+Burnbar — a macOS menu bar application that visualizes Claude Code token burn and cost. It shells out to the bundled `ccusage` CLI (which reads local `~/.claude` usage logs and prices them per model) and renders today's and all-time totals in the tray. Backend-agnostic (Anthropic / Vertex AI / Bedrock). Built with TypeScript, Electron, and an ES module architecture.
+
+> 📚 Full LLM-oriented docs live in [docs/](docs/) — start at [docs/AGENTS.md](docs/AGENTS.md). Keep them in sync when you change behavior, types, or packaging.
 
 ## Development Requirements
 
@@ -88,43 +90,52 @@ The application follows Electron's single-process architecture with a tray-only 
 - Uses `fileURLToPath(import.meta.url)` for `__dirname` replacement in ES modules
 
 **Usage Module** (`src/usage.ts`):
-- Data fetching using static imports from ccusage library
-- Aggregates today's usage and calculates all-time totals
-- Error handling for missing usage data with graceful fallbacks
+- Spawns the bundled ccusage CLI (`ccusage daily --json --mode calculate`) via the current runtime, parsing its JSON output
+- Derives today from the single daily report and reads all-time grand totals (no second scan)
+- Error handling for missing/unreadable usage data with graceful fallbacks
 
 **Type Definitions** (`src/types.ts`):
 - Core data structures for usage statistics and API responses
 - TypeScript interfaces for type safety across modules
 
 **Key Functions**:
-- `getUserUsage()`: Uses ccusage `loadDailyUsageData`, `calculateTotals`, and `createTotalsObject`
+- `getUserUsage()`: Spawns the ccusage CLI, parses its JSON, derives today + all-time totals
 - `TrayManager.initializeTray()`: Creates tray icon and sets up event handlers
 - `TrayManager.refreshTrayMenu()`: Builds context menu with formatted usage data
 
 **Data Flow**:
-1. Import ccusage modules using static ES module imports
-2. Load today's usage data with `since` parameter for current date
-3. Load all-time usage data without date filter
-4. Calculate totals and format for display in tray menu
-5. Handle errors gracefully with fallback messaging
+1. Resolve the bundled ccusage CLI entry via `createRequire(...).resolve("ccusage/src/cli.js")`
+2. Spawn it through the current runtime (`process.execPath`) with `ELECTRON_RUN_AS_NODE=1` — no external `node`/`ccusage` needed
+3. Parse stdout JSON into the `CcusageDailyReport` subset
+4. Derive today from `daily[]` (match `period` to today's ISO date) and read `totals`; format for the tray menu
+5. Handle errors gracefully with fallback messaging (`UsageData.error`)
 
 ## ccusage Integration Details
 
-The app uses ccusage v0.8.0+ and leverages its ESM modules with static imports:
+The app uses ccusage 20.x, which ships **as a CLI only** (no library exports), so Burnbar invokes its bundled `cli.js` and parses the JSON it prints:
 
 ```typescript
-import { calculateTotals, createTotalsObject } from "ccusage/calculate-cost";
-import { loadDailyUsageData } from "ccusage/data-loader";
+import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
+import { promisify } from "node:util";
 
-// Get today's usage (YYYYMMDD format)
-const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-const todayData = await loadDailyUsageData({ since: today });
+const execFileAsync = promisify(execFile);
+const require = createRequire(import.meta.url);
+const CCUSAGE_CLI = require.resolve("ccusage/src/cli.js");
 
-// Get all-time usage and calculate totals
-const allTimeData = await loadDailyUsageData();
-const allTimeTotals = calculateTotals(allTimeData);
-const totalsObject = createTotalsObject(allTimeTotals);
+// Running ccusage through the current runtime's own binary (Electron in
+// production, Node in tests) via ELECTRON_RUN_AS_NODE keeps the app
+// self-contained. `--mode calculate` prices from local logs, so this is
+// backend-agnostic (Anthropic / Vertex AI / Bedrock).
+const { stdout } = await execFileAsync(
+  process.execPath,
+  [CCUSAGE_CLI, "daily", "--json", "--mode", "calculate"],
+  { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, maxBuffer: 64 * 1024 * 1024 },
+);
+const report = JSON.parse(stdout); // { daily: [{ period, totalTokens, totalCost }], totals: {...} }
 ```
+
+> ⚠️ Launch gotcha: an _inherited_ `ELECTRON_RUN_AS_NODE` (e.g. terminals inside an Electron-based IDE) breaks Burnbar's own launch. Run with `env -u ELECTRON_RUN_AS_NODE`. See [docs/adr/002-electron-run-as-node.md](docs/adr/002-electron-run-as-node.md).
 
 ## TypeScript Configuration
 
@@ -178,10 +189,10 @@ When creating a new release:
    npm run dist:mac
    ```
 
-5. **Get SHA256 hashes for Homebrew**:
+5. **Get SHA256 hashes for Homebrew** (electron-builder writes artifacts to `release/` as `Burnbar-X.X.X*`):
    ```bash
-   shasum -a 256 "release/Claude Usage Tracker-X.X.X.dmg"
-   shasum -a 256 "release/Claude Usage Tracker-X.X.X-arm64.dmg"
+   shasum -a 256 "release/Burnbar-X.X.X.dmg"
+   shasum -a 256 "release/Burnbar-X.X.X-arm64.dmg"
    ```
 
 6. **Push to GitHub**:
