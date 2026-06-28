@@ -1,0 +1,130 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run/Dev",
+      "type": "shell",
+      "command": "env -u ELECTRON_RUN_AS_NODE pnpm run dev",
+      "detail": "Compile TypeScript and launch the menu-bar app (ELECTRON_RUN_AS_NODE unset so Electron runs as a GUI, not Node)",
+      "icon": { "id": "rocket", "color": "terminal.ansiGreen" },
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true }
+    },
+    {
+      "label": "Run/App",
+      "type": "shell",
+      "command": "env -u ELECTRON_RUN_AS_NODE pnpm start",
+      "detail": "Launch the already-built app from dist/ without recompiling",
+      "icon": { "id": "play", "color": "terminal.ansiGreen" },
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true }
+    },
+    {
+      "label": "Build/Compile",
+      "type": "shell",
+      "command": "pnpm run build",
+      "detail": "Compile TypeScript to dist/",
+      "icon": { "id": "tools", "color": "terminal.ansiBlue" },
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "Build/Watch",
+      "type": "shell",
+      "command": "pnpm exec tsc --watch",
+      "detail": "Recompile to dist/ on every change",
+      "icon": { "id": "eye", "color": "terminal.ansiBlue" },
+      "isBackground": true,
+      "problemMatcher": ["$tsc-watch"],
+      "presentation": { "panel": "dedicated", "reveal": "always" }
+    },
+    {
+      "label": "Build/Typecheck",
+      "type": "shell",
+      "command": "pnpm run typecheck",
+      "detail": "Type-check the project without emitting files",
+      "icon": { "id": "symbol-type", "color": "terminal.ansiBlue" },
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "Check/Lint",
+      "type": "shell",
+      "command": "pnpm run lint",
+      "detail": "Run oxlint",
+      "icon": { "id": "search", "color": "terminal.ansiYellow" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Check/Format",
+      "type": "shell",
+      "command": "pnpm run format",
+      "detail": "Check formatting with oxfmt (read-only)",
+      "icon": { "id": "list-flat", "color": "terminal.ansiYellow" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Check/All",
+      "type": "shell",
+      "command": "pnpm run check",
+      "detail": "Lint + format check (oxlint && oxfmt --check)",
+      "icon": { "id": "pass", "color": "terminal.ansiYellow" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Check/Lint Fix",
+      "type": "shell",
+      "command": "pnpm run lint:fix",
+      "detail": "Auto-fix lint issues (oxlint --fix)",
+      "icon": { "id": "wrench", "color": "terminal.ansiYellow" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Check/Format Write",
+      "type": "shell",
+      "command": "pnpm run format:write",
+      "detail": "Reformat files in place (oxfmt)",
+      "icon": { "id": "edit", "color": "terminal.ansiYellow" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Check/Fix All",
+      "type": "shell",
+      "command": "pnpm run check:fix",
+      "detail": "Auto-fix lint and reformat (oxlint --fix && oxfmt)",
+      "icon": { "id": "sparkle", "color": "terminal.ansiYellow" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Assets/Icons",
+      "type": "shell",
+      "command": "pnpm run icon",
+      "detail": "Regenerate tray + app PNGs from the committed SVG sources",
+      "icon": { "id": "file-media", "color": "terminal.ansiMagenta" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Dist/macOS",
+      "type": "shell",
+      "command": "pnpm run dist:mac",
+      "detail": "Build .dmg + .zip for x64 and arm64 (signs/notarizes if credentials are set)",
+      "icon": { "id": "package", "color": "terminal.ansiCyan" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Dist/Universal",
+      "type": "shell",
+      "command": "pnpm run dist:mac:universal",
+      "detail": "Build a universal (x64 + arm64) macOS app",
+      "icon": { "id": "globe", "color": "terminal.ansiCyan" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Dist/Current",
+      "type": "shell",
+      "command": "pnpm run dist",
+      "detail": "Package for the current platform",
+      "icon": { "id": "desktop-download", "color": "terminal.ansiCyan" },
+      "problemMatcher": []
+    }
+  ]
+}

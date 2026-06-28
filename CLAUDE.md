@@ -45,7 +45,7 @@ macOS menu bar application that visualizes Claude Code usage costs using the `cc
 
 ## Development Requirements
 
-- Run Biome linting and formatting every time you change the code
+- Run oxlint (lint) and oxfmt (format) every time you change the code
 - Use Node16 module system with explicit `.js` extensions for local imports
 - Package.json has `"type": "module"` configured for ES module support
 
@@ -59,11 +59,12 @@ npm start            # Run Electron (requires prior build)
 npm run typecheck    # Type check without emitting files
 
 # Code Quality
-npm run lint         # Run Biome linter
-npm run lint:fix     # Auto-fix linting issues
-npm run format       # Format code with Biome
-npm run check        # Run all Biome checks
-npm run check:fix    # Auto-fix all Biome issues
+npm run lint         # Run oxlint
+npm run lint:fix     # Auto-fix lint issues (oxlint --fix)
+npm run format       # Check formatting (oxfmt --check)
+npm run format:write # Format code in place (oxfmt)
+npm run check        # Lint + format check (oxlint && oxfmt --check)
+npm run check:fix    # Auto-fix lint + format (oxlint --fix && oxfmt)
 
 # Distribution
 npm run dist         # Build and package for current platform

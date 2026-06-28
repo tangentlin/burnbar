@@ -8,29 +8,23 @@
 //   build/icons/icon.png     1024px app icon for electron-builder packaging
 //   assets/icon.png          44px menu-bar tray template (loaded by src/tray.ts)
 //
-// Uses rsvg-convert (librsvg) — install with `brew install librsvg`.
-// Tracked as tech debt: replace with a portable npm renderer so a clean
-// checkout / CI can regenerate without a system dependency.
+// Rendered with @resvg/resvg-js (npm, prebuilt binaries) so `pnpm icon` works
+// after only `pnpm install` — no Homebrew / system rsvg-convert required.
 
-import { execFileSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Resvg } from "@resvg/resvg-js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 function render(svg, out, size) {
   const outPath = join(root, out);
   mkdirSync(dirname(outPath), { recursive: true });
-  execFileSync("rsvg-convert", [
-    "-w",
-    String(size),
-    "-h",
-    String(size),
-    join(root, svg),
-    "-o",
-    outPath,
-  ]);
+  const resvg = new Resvg(readFileSync(join(root, svg)), {
+    fitTo: { mode: "width", value: size },
+  });
+  writeFileSync(outPath, resvg.render().asPng());
   console.log(`✓ ${out} (${size}px)`);
 }
 
