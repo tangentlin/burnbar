@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Burnbar">
+  <defs>
+    <linearGradient id="tile" x1="512" y1="96" x2="512" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2A1206"/>
+      <stop offset="1" stop-color="#160A04"/>
+    </linearGradient>
+    <linearGradient id="flame" x1="512" y1="150" x2="512" y2="980" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFC93C"/>
+      <stop offset="0.45" stop-color="#FF7A18"/>
+      <stop offset="1" stop-color="#E5300A"/>
+    </linearGradient>
+    <radialGradient id="core" cx="512" cy="700" r="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFF4C2"/>
+      <stop offset="0.6" stop-color="#FFD24A"/>
+      <stop offset="1" stop-color="#FF9A2E"/>
+    </radialGradient>
+  </defs>
+  <rect x="96" y="96" width="832" height="832" rx="190" fill="url(#tile)"/>
+  <path fill="url(#flame)" fill-rule="evenodd" d="M512 980 C 326 980 152 864 152 690 C 152 548 252 458 346 388 C 410 340 458 296 476 232 C 486 280 478 322 450 364 C 514 322 548 248 524 146 C 522 128 544 122 552 136 C 606 216 640 272 700 348 C 772 440 872 542 872 700 C 872 866 700 980 512 980 Z M512 838 C 602 838 676 778 676 696 C 676 626 632 570 580 536 C 596 614 558 668 512 700 C 470 672 446 620 458 540 C 406 574 348 628 348 698 C 348 778 422 838 512 838 Z"/>
+  <path fill="url(#core)" d="M512 838 C 602 838 676 778 676 696 C 676 626 632 570 580 536 C 596 614 558 668 512 700 C 470 672 446 620 458 540 C 406 574 348 628 348 698 C 348 778 422 838 512 838 Z"/>
+</svg>

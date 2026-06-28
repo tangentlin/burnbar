@@ -1,4 +1,10 @@
-import { Menu, type MenuItemConstructorOptions, Tray, app } from "electron";
+import {
+  Menu,
+  type MenuItemConstructorOptions,
+  Tray,
+  app,
+  nativeImage,
+} from "electron";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { UsageData } from "./types.js";
@@ -16,7 +22,10 @@ export class TrayManager {
     const iconPath = path.join(__dirname, "..", "assets", "icon.png");
 
     try {
-      this.tray = new Tray(iconPath);
+      // Template image: macOS tints it automatically for light/dark menu bars.
+      const icon = nativeImage.createFromPath(iconPath);
+      icon.setTemplateImage(true);
+      this.tray = new Tray(icon);
       if (process.platform === "darwin") {
         this.tray.setTitle("");
       }

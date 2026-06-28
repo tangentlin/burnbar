@@ -136,6 +136,9 @@ dist
 .pnp.*
 
 release/
-build/icons/
+# Generated icon outputs are ignored, except the committed packaging icon
+# (regenerate with `pnpm icon`).
+build/icons/*
+!build/icons/icon.png
 
 .DS_Store
