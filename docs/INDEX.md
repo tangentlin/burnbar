@@ -1,6 +1,6 @@
 # Burnbar — Documentation Index
 
-> Burnbar is a macOS menu-bar app showing Claude Code token burn and cost, powered by the ccusage CLI. Backend-agnostic (Anthropic / Vertex AI / Bedrock).
+> Burnbar is a macOS menu-bar app showing Claude Code (and other agent CLIs') token burn and cost, powered by the ccusage CLI. It also keeps a durable, numbers-only usage archive and an in-app dashboard. Backend-agnostic (Anthropic / Vertex AI / Bedrock).
 
 | Document | Description |
 |----------|-------------|
@@ -13,10 +13,20 @@
 
 | Module | Description |
 |--------|-------------|
-| [main](./modules/main.md) | Electron lifecycle; boots the tray, hides the Dock |
-| [tray](./modules/tray.md) | `TrayManager` — icon, title, context menu, 60s refresh |
-| [usage](./modules/usage.md) | `getUserUsage()` — spawns ccusage CLI, parses to `UsageData` |
-| [types](./modules/types.md) | Shared contracts: `UsageStats`, `UsageData`, `CcusageDailyReport` |
+| [main](./modules/main.md) | Electron lifecycle; wires capture + tray + dashboard, quit flush |
+| [tray](./modules/tray.md) | `TrayManager` — display-only icon/title/menu + "Open Usage Dashboard…" |
+| [capture](./modules/capture.md) | ccusage spawn (DI runner) + normalizers + `toUsageData` |
+| [capture-service](./modules/capture-service.md) | `CaptureService` — one ccusage call feeding tray **and** archive |
+| [store](./modules/store.md) | `ArchiveStore` — keep-richest merge, atomic IO, manifest |
+| [derive](./modules/derive.md) | `deriveSeries` — archive → chart series (cost + tokens, pure) |
+| [settings](./modules/settings.md) | `SettingsStore` — persisted refresh interval |
+| [sparkline](./modules/sparkline.md) | pure data → PNG mini-graph for the menu |
+| [time](./modules/time.md) | tz helpers + relative-time / interval formatting |
+| [ipc](./modules/ipc.md) | `registerArchiveIpc` — read-only `archive:get-series` |
+| [preload](./modules/preload.md) | contextBridge → `window.burnbar.getSeries` |
+| [window](./modules/window.md) | `DashboardWindow` — lazy BrowserWindow + security |
+| [dashboard](./modules/dashboard.md) | Chart.js renderer (esbuild bundle) |
+| [types](./modules/types.md) | Shared contracts: usage, ccusage raw, archive records, series |
 | [icon-pipeline](./modules/icon-pipeline.md) | SVG → PNG icon generation (`pnpm icon`) |
 | [packaging](./modules/packaging.md) | electron-builder config, signing, notarization, entitlements |
 
@@ -25,7 +35,10 @@
 | Feature | Description |
 |---------|-------------|
 | [menu-bar-cost](./features/menu-bar-cost.md) | Live today's-cost title in the menu bar |
-| [usage-menu](./features/usage-menu.md) | Context menu: today + all-time cost & tokens, Quit |
+| [usage-menu](./features/usage-menu.md) | Context menu: today + all-time, Open Dashboard, Quit |
+| [usage-archive](./features/usage-archive.md) | Durable, numbers-only capture that survives source-log purges |
+| [usage-dashboard](./features/usage-dashboard.md) | Chart.js window: cost over time, by model, by agent |
+| [usage-refresh](./features/usage-refresh.md) | Configurable cadence (15 min default), manual mode, Refresh Now |
 | [release-distribution](./features/release-distribution.md) | Building signed/notarized macOS artifacts |
 
 ## ADRs
@@ -37,3 +50,6 @@
 | [003](./adr/003-single-call-derive-today.md) | One CLI call; derive "today" from the daily report |
 | [004](./adr/004-template-tray-icon.md) | Use a macOS template image for the tray icon |
 | [005](./adr/005-env-driven-signing-notarization.md) | Drive signing & notarization from env vars |
+| [006](./adr/006-durable-usage-archive.md) | A durable, numbers-only usage archive in `userData` |
+| [007](./adr/007-keep-richest-merge.md) | "Keep richest, never shrink" merge (anti-purge) |
+| [008](./adr/008-dashboard-window-bundle.md) | Dashboard: ESM preload, sandbox, separate renderer bundle |

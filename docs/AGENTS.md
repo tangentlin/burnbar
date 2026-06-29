@@ -15,12 +15,16 @@
 |--------------------|------------|
 | Understand vocabulary / data shapes | [DOMAIN.md](./DOMAIN.md) |
 | See end-to-end data flow | [ARCHITECTURE.md](./ARCHITECTURE.md) |
-| Change how usage is fetched/parsed | [modules/usage.md](./modules/usage.md) → [src/usage.ts](../src/usage.ts) |
+| Change how ccusage is spawned/parsed | [modules/capture.md](./modules/capture.md) → [src/capture.ts](../src/capture.ts) |
+| Change capture cadence / quit flush / rollover | [modules/capture-service.md](./modules/capture-service.md) → [src/capture-service.ts](../src/capture-service.ts) |
+| Change the archive format / merge rule | [modules/store.md](./modules/store.md) → [src/store.ts](../src/store.ts) + [adr/007](./adr/007-keep-richest-merge.md) |
+| Change a dashboard chart / view | [features/usage-dashboard.md](./features/usage-dashboard.md) → [src/derive.ts](../src/derive.ts) + [src/dashboard/](../src/dashboard/) |
 | Change the menu-bar title | [features/menu-bar-cost.md](./features/menu-bar-cost.md) → [src/tray.ts](../src/tray.ts) |
-| Change the context menu rows | [features/usage-menu.md](./features/usage-menu.md) → [src/tray.ts](../src/tray.ts) |
-| Change refresh cadence | [src/tray.ts:7](../src/tray.ts#L7) (`REFRESH_INTERVAL_MS`) |
+| Change the context menu rows / sparkline / Refresh Now | [features/usage-menu.md](./features/usage-menu.md) → [src/tray.ts](../src/tray.ts), [src/sparkline.ts](../src/sparkline.ts) |
+| Change refresh cadence / manual mode / persistence | [features/usage-refresh.md](./features/usage-refresh.md) → [src/settings.ts](../src/settings.ts) + [src/capture-service.ts](../src/capture-service.ts) |
 | Add/modify shared types | [modules/types.md](./modules/types.md) → [src/types.ts](../src/types.ts) |
-| App lifecycle / startup | [modules/main.md](./modules/main.md) → [src/main.ts](../src/main.ts) |
+| App lifecycle / wiring / quit flush | [modules/main.md](./modules/main.md) → [src/main.ts](../src/main.ts) |
+| Window security / IPC / preload | [modules/window.md](./modules/window.md), [modules/ipc.md](./modules/ipc.md), [modules/preload.md](./modules/preload.md) + [adr/008](./adr/008-dashboard-window-bundle.md) |
 | Change icons | [modules/icon-pipeline.md](./modules/icon-pipeline.md) → [scripts/generate-icons.mjs](../scripts/generate-icons.mjs) + the SVGs |
 | Package / sign / notarize | [modules/packaging.md](./modules/packaging.md), [features/release-distribution.md](./features/release-distribution.md) |
 | Know WHY a non-obvious choice was made | [adr/](./adr/) |
@@ -39,9 +43,12 @@ bash /Users/tangent/.claude/skills/doc-gen/repo-tree.sh /Users/tangent/programmi
 |--------|---------|
 | Install | `pnpm install` |
 | Dev (build + launch) | `pnpm dev` |
-| Build only (`tsc` → `dist/`) | `pnpm build` |
+| Build (`tsc` + renderer bundle → `dist/`) | `pnpm build` |
+| Build renderer only (esbuild) | `pnpm build:renderer` |
 | Launch built app | `pnpm start` |
-| Typecheck | `pnpm typecheck` |
+| Typecheck (main + dashboard configs) | `pnpm typecheck` |
+| Unit tests (Vitest) | `pnpm test` |
+| Tests (watch / coverage) | `pnpm test:watch` / `pnpm test:coverage` |
 | Lint + format check | `pnpm check` |
 | Auto-fix lint + format | `pnpm check:fix` |
 | Regenerate icons | `pnpm icon` |
@@ -53,7 +60,7 @@ bash /Users/tangent/.claude/skills/doc-gen/repo-tree.sh /Users/tangent/programmi
 env -u ELECTRON_RUN_AS_NODE pnpm start
 ```
 
-This is unrelated to the `ELECTRON_RUN_AS_NODE` that [src/usage.ts](../src/usage.ts#L22) sets for the ccusage child (that one is correct). See [adr/002-electron-run-as-node.md](./adr/002-electron-run-as-node.md). First-ever launch also lazily downloads the Electron 42 binary.
+This is unrelated to the `ELECTRON_RUN_AS_NODE` that [src/capture.ts](../src/capture.ts#L33-L41) sets for the ccusage child (that one is correct). See [adr/002-electron-run-as-node.md](./adr/002-electron-run-as-node.md). First-ever launch also lazily downloads the Electron 42 binary.
 
 ## Conventions
 
@@ -61,59 +68,75 @@ This is unrelated to the `ELECTRON_RUN_AS_NODE` that [src/usage.ts](../src/usage
 
 | Directory | Purpose | Conventions |
 |-----------|---------|-------------|
-| `src/` | Runtime TypeScript (ESM) | Local imports use explicit `.js` extensions (Node16 module resolution). No barrel files. |
+| `src/` | Main-process TypeScript (ESM) | Local imports use explicit `.js` extensions (Node16). No barrel files. |
+| `src/dashboard/` | Browser-context renderer | Bundled by **esbuild** (not `tsc`); type-checked via `tsconfig.dashboard.json`. |
+| `src/preload.mts` | ESM preload | `.mts` → `dist/preload.mjs` (Electron 42 ESM-preload requirement). |
+| `test/` | Vitest unit tests + JSON fixtures | Pure logic only (merge/normalize/derive/atomic IO); ccusage mocked via the injected runner. |
 | `scripts/` | Build-time Node scripts (`.mjs`) | ESM; resolve paths via `import.meta.url`. |
-| `assets/` | Icon sources + generated PNGs | SVGs are source of truth; PNGs are generated, committed. |
-| `build/` | Packaging inputs | `entitlements.mac.plist`, `icons/icon.png` (generated). |
-| `dist/` | `tsc` output | Git-ignored. Never hand-edit. |
+| `assets/` | Icon sources + generated PNGs | SVGs are source of truth; PNGs generated, committed. |
+| `build/` | Packaging inputs | `entitlements.mac.plist`, `icons/icon.png`. |
+| `dist/` | `tsc` + esbuild output | Git-ignored. Includes `dist/dashboard/**` and `dist/preload.mjs`. |
 | `release/` | electron-builder output | Git-ignored. |
 | `docs/` | This documentation set | — |
 
 ### Naming & Patterns
 
-- ES modules throughout (`"type": "module"`); use `fileURLToPath(import.meta.url)` for `__dirname`. — [tray.ts:14-15](../src/tray.ts#L14-L15)
-- Local imports MUST carry `.js` extensions even in `.ts` source. — [main.ts:2](../src/main.ts#L2)
-- Comments explain **why**, not what (see the dense rationale comment in [usage.ts:8-13](../src/usage.ts#L8-L13)).
-- ccusage's `totalCost` is renamed to `cost` at the mapping boundary; keep that boundary in [usage.ts](../src/usage.ts).
+- ES modules throughout (`"type": "module"`); `fileURLToPath(import.meta.url)` for `__dirname`.
+- Local imports MUST carry `.js` extensions even in `.ts` source.
+- Comments explain **why**, not what.
+- ccusage's `totalCost` is renamed to `cost` only at the tray boundary (`UsageStats`); keep that mapping in [capture.ts](../src/capture.ts). Archive records mirror ccusage field names.
+- The ccusage runner is **dependency-injected** into [capture.ts](../src/capture.ts) so capture/normalize is testable without spawning; [store.ts](../src/store.ts) merge and [derive.ts](../src/derive.ts) are **pure**.
 
 ### Tooling
 
-- Lint: **oxlint** (`correctness` = error). — [.oxlintrc.json](../.oxlintrc.json)
-- Format: **oxfmt** (markdown ignored). — [.oxfmtrc.json](../.oxfmtrc.json)
-- Run lint + format after every code change (project rule). — [CLAUDE.md](../CLAUDE.md)
-- Package manager: **pnpm** (pinned via `packageManager`). — [package.json:47](../package.json#L47)
-- CI lints + typechecks on every push (no release build in CI). — [.github/workflows/ci.yml](../.github/workflows/ci.yml)
+- Lint: **oxlint** (`correctness` = error). Format: **oxfmt** (markdown ignored).
+- Tests: **Vitest** (node env). Renderer bundle: **esbuild**. Charts: **chart.js** (devDep, bundled).
+- Run `pnpm check` after every code change; run `pnpm test` for logic changes.
+- Package manager: **pnpm** (pinned via `packageManager`); `save-exact=true`.
+- CI lints + typechecks (+ should run `test`). — [.github/workflows/ci.yml](../.github/workflows/ci.yml)
 
 ## Change Workflows
 
 ### Add a menu row / change displayed data
 1. Edit `buildMenuItems` / `addDailyUsageItems` / `addTotalUsageItems` in [tray.ts](../src/tray.ts).
-2. If it needs a new figure, extend `CcusageDailyReport` + the mapping in [usage.ts](../src/usage.ts) and the types in [types.ts](../src/types.ts).
-3. Run `pnpm check && pnpm typecheck`.
-4. Update [features/usage-menu.md](./features/usage-menu.md) and [modules/tray.md](./modules/tray.md).
+2. If it needs a new figure, extend the `CcusageRow` subset + `toUsageData` in [capture.ts](../src/capture.ts) and the types in [types.ts](../src/types.ts).
+3. `pnpm check && pnpm typecheck`. Update [features/usage-menu.md](./features/usage-menu.md) + [modules/tray.md](./modules/tray.md).
+
+### Change the archive shape or merge rule
+1. Edit the pure merge in [store.ts](../src/store.ts) and the records in [types.ts](../src/types.ts).
+2. **Bump `ARCHIVE_SCHEMA_VERSION` and add a migration** if the on-disk shape changes (see [adr/007](./adr/007-keep-richest-merge.md), [boundaries below](#boundaries)).
+3. Update/extend the Vitest merge tests; run `pnpm test`. Update [modules/store.md](./modules/store.md) + [DOMAIN.md](./DOMAIN.md).
+
+### Add or change a dashboard view
+1. Add the derivation to [derive.ts](../src/derive.ts) (keep it pure; carry `data` + `tokens`) + a test in [test/derive.test.ts](../test/derive.test.ts).
+2. Wire it through [ipc.ts](../src/ipc.ts) / [types.ts](../src/types.ts) and render in [src/dashboard/renderer.ts](../src/dashboard/renderer.ts).
+3. `pnpm build && pnpm check && pnpm test`. Update [features/usage-dashboard.md](./features/usage-dashboard.md).
+
+### Change the refresh cadence / a setting
+1. The cadence lives in [settings.ts](../src/settings.ts) (`refreshIntervalMinutes`, `0` = manual; presets in `REFRESH_PRESETS_MINUTES`); the timer + state push live in [capture-service.ts](../src/capture-service.ts); the submenu in [tray.ts](../src/tray.ts).
+2. For a new persisted setting, extend `AppSettings` in [types.ts](../src/types.ts) + [settings.ts](../src/settings.ts), thread it through `main.ts`, and add a `settings.test.ts` case.
+3. `pnpm check && pnpm test`. Update [features/usage-refresh.md](./features/usage-refresh.md) + [modules/settings.md](./modules/settings.md).
 
 ### Change the ccusage query
-1. Edit the args/flags in [usage.ts:19-20](../src/usage.ts#L19-L20).
-2. Adjust `CcusageDailyReport` in [types.ts](../src/types.ts) if the shape changes.
-3. Update [modules/usage.md](./modules/usage.md); add an ADR if it's a consequential change.
+1. Edit the args/flags in [capture.ts](../src/capture.ts) (`runDailyReport` / `runSessionReport`).
+2. Adjust the `CcusageRow` subset in [types.ts](../src/types.ts) if the shape changes.
+3. Update [modules/capture.md](./modules/capture.md); add an ADR if consequential.
 
-### Change icons
-1. Edit `assets/burnbar.svg` and/or `assets/burnbar-tray.svg`.
-2. `pnpm icon` to regenerate PNGs. Never hand-edit PNGs.
-3. Verify the tray asset stays monochrome (template image).
+### Change icons / Ship a release
+- Icons: edit the SVGs, `pnpm icon`, keep the tray asset monochrome.
+- Release: bump `version`, `pnpm check && pnpm typecheck && pnpm test`, set signing/notary env vars, `pnpm dist:mac`. See [features/release-distribution.md](./features/release-distribution.md).
 
-### Ship a release
-1. Bump `version` in [package.json](../package.json).
-2. `pnpm check && pnpm typecheck`.
-3. Set signing/notary env vars (or none for unsigned), then `pnpm dist:mac`.
-4. Artifacts appear in `release/`. See [features/release-distribution.md](./features/release-distribution.md).
+## Boundaries
+
+The archive feature has hard rules (from the spec). **Never**: store conversation content or raw logs (numbers only); transmit archive data off-device; modify the source tools' logs; overwrite a richer record with a poorer one. **Ask first**: adding any dependency beyond chart.js/esbuild/vitest (and any native dep); changing the stored schema (bump `schemaVersion` + migration); changing tray click behavior or the displayed numbers. See [ADR-006](./adr/006-durable-usage-archive.md) / [ADR-007](./adr/007-keep-richest-merge.md).
 
 ## Documentation Update Rules
 
 | When you change... | Update... |
 |---------------------|-----------|
-| A domain type / DTO ([types.ts](../src/types.ts)) | [DOMAIN.md](./DOMAIN.md) glossary + ER, [modules/types.md](./modules/types.md), consuming module docs |
+| A domain type / record ([types.ts](../src/types.ts)) | [DOMAIN.md](./DOMAIN.md) glossary + ER, [modules/types.md](./modules/types.md), consuming module docs |
 | A module's public surface | That [modules/*.md](./modules/) |
+| Merge / capture / derive behavior | [modules/store.md](./modules/store.md) / [capture-service.md](./modules/capture-service.md) / [derive.md](./modules/derive.md) |
 | User-visible behavior | The relevant [features/*.md](./features/) + [functional-spec/PRODUCT.md](./functional-spec/PRODUCT.md) |
 | File/folder structure | The Conventions table above (and re-run `repo-tree.sh`) |
 | A consequential design decision | A new/updated [adr/*.md](./adr/) |
@@ -121,7 +144,9 @@ This is unrelated to the `ELECTRON_RUN_AS_NODE` that [src/usage.ts](../src/usage
 
 ## Context-Minimizing Guidance
 
-- **Behavior bug in the menu/title:** [modules/tray.md](./modules/tray.md) → [src/tray.ts](../src/tray.ts). No need to read packaging/icons.
-- **Wrong/missing numbers:** [modules/usage.md](./modules/usage.md) → [src/usage.ts](../src/usage.ts) + [src/types.ts](../src/types.ts).
-- **Build/ship issue:** [modules/packaging.md](./modules/packaging.md) + [features/release-distribution.md](./features/release-distribution.md). Skip `src/`.
+- **Behavior bug in the menu/title:** [modules/tray.md](./modules/tray.md) → [src/tray.ts](../src/tray.ts).
+- **Wrong/missing numbers:** [modules/capture.md](./modules/capture.md) + [modules/capture-service.md](./modules/capture-service.md).
+- **Archive not filling / shrinking / corrupt:** [modules/store.md](./modules/store.md) → [src/store.ts](../src/store.ts) + [adr/007](./adr/007-keep-richest-merge.md).
+- **Dashboard wrong/blank:** [modules/derive.md](./modules/derive.md) → [src/derive.ts](../src/derive.ts), then [modules/ipc.md](./modules/ipc.md) / [modules/window.md](./modules/window.md).
+- **Build/ship issue:** [modules/packaging.md](./modules/packaging.md) + [features/release-distribution.md](./features/release-distribution.md).
 - **"Why is it done this way?":** [adr/](./adr/) before changing anything.

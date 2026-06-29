@@ -2,12 +2,14 @@
 
 ## User Story
 
-As a Claude Code user, I want a click to reveal today's and all-time cost and token counts, plus a way to quit.
+As a Claude Code user, I want a click to reveal today's and all-time cost and token counts, a 30-day spend glance, when it last updated, and controls to refresh or change the cadence — plus a way to quit.
 
 ## Scope
 
-**Includes:** context menu with "Today's Usage" (cost + tokens), "All-Time Usage" (cost + tokens), separators, and "Quit"; empty and error fallbacks.
-**Excludes:** any interactive/actionable rows — every usage row is `enabled: false` (display-only).
+**Includes:** context menu with "Today's Usage" and "All-Time Usage" (cost + tokens); a clickable **30-day spend sparkline** (opens the dashboard); a relative-time "Updated …" row; "Refresh Now"; an "Auto-Refresh" submenu (Manual / 5 / 10 / 15 / 30 / 60 min); "Open Usage Dashboard…"; "Quit"; empty and error fallbacks.
+**Excludes:** free-form interval entry (presets only; a non-preset value set in `settings.json` is honored and shown as "Custom"); editing usage rows (every usage row stays `enabled: false`).
+
+The sparkline (a template `NativeImage`), last-updated formatting, and Auto-Refresh submenu are detailed in [modules/tray.md](../modules/tray.md); the cadence/persistence lives in [features/usage-refresh.md](./usage-refresh.md).
 
 ## UX Flow
 
@@ -25,8 +27,9 @@ ccusage failed → single disabled row "Error loading usage data" (sections skip
 - [ ] Menu shows today + all-time cost and tokens when data exists. — [tray.ts:106-150](../../src/tray.ts#L106-L150)
 - [ ] Tokens are thousands-separated via `toLocaleString()`. — [tray.ts:118](../../src/tray.ts#L118), [tray.ts:141](../../src/tray.ts#L141)
 - [ ] On error, only the error row + Quit appear. — [tray.ts:84-101](../../src/tray.ts#L84-L101)
-- [ ] Quit always present and calls `app.quit()`. — [tray.ts:96-101](../../src/tray.ts#L96-L101)
-- [ ] Menu rebuilt every refresh (no stale rows). — [tray.ts:62-64](../../src/tray.ts#L62-L64)
+- [ ] Quit always present and calls `app.quit()`. — [tray.ts#buildMenuItems](../../src/tray.ts)
+- [ ] An "Open Usage Dashboard…" item sits above Quit and opens the dashboard. — [tray.ts#buildMenuItems](../../src/tray.ts), [features/usage-dashboard.md](./usage-dashboard.md)
+- [ ] Menu rebuilt on every pushed update (no stale rows). — [tray.ts#render](../../src/tray.ts)
 
 ## Data Model (Conceptual)
 
@@ -47,10 +50,10 @@ stateDiagram-v2
 
 | Concern | File |
 |---------|------|
-| Menu assembly | [tray.ts#buildMenuItems](../../src/tray.ts#L81-L104) |
-| Today rows | [tray.ts#addDailyUsageItems](../../src/tray.ts#L106-L127) |
-| All-time rows | [tray.ts#addTotalUsageItems](../../src/tray.ts#L129-L150) |
-| Data | [usage.ts#getUserUsage](../../src/usage.ts#L29) |
+| Menu assembly | [tray.ts#buildMenuItems](../../src/tray.ts) |
+| Today rows | [tray.ts#addDailyUsageItems](../../src/tray.ts) |
+| All-time rows | [tray.ts#addTotalUsageItems](../../src/tray.ts) |
+| Data | [capture.ts#toUsageData](../../src/capture.ts#L124) pushed via [CaptureService](../../src/capture-service.ts) |
 
 ## Known Pitfalls
 

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';"
+    />
+    <title>Burnbar — Usage Dashboard</title>
+    <link rel="stylesheet" href="dashboard.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">Burnbar</div>
+      <div class="total">
+        <span class="total-label" id="total-label">All-time</span>
+        <span class="total-value" id="total-value">—</span>
+      </div>
+    </header>
+
+    <section class="controls">
+      <div class="segmented" id="range" role="group" aria-label="Time range">
+        <button type="button" data-range="30d" class="active" aria-pressed="true">30d</button>
+        <button type="button" data-range="90d">90d</button>
+        <button type="button" data-range="all">All</button>
+      </div>
+      <div class="segmented" id="dimension" role="group" aria-label="Breakdown">
+        <button type="button" data-dim="none" class="active" aria-pressed="true">Total</button>
+        <button type="button" data-dim="model">By model</button>
+        <button type="button" data-dim="agent">By agent</button>
+      </div>
+    </section>
+
+    <main class="chart-area">
+      <canvas id="chart" aria-label="Usage cost chart" role="img"></canvas>
+      <p class="empty" id="empty" hidden>No archived usage yet — it fills as Burnbar runs.</p>
+      <p class="error" id="error" hidden></p>
+    </main>
+
+    <script type="module" src="renderer.js"></script>
+  </body>
+</html>
