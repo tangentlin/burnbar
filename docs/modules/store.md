@@ -68,7 +68,7 @@ Sessions load **every** shard into one map before writing so a session crossing 
 - **Anti-purge (load-bearing)**: per-field `max()` means a later, smaller snapshot can never shrink a stored count; merge is monotonic, so backfill and incremental update are one idempotent path. — [mergeModelLine](../../src/store.ts#L33), [adr/007](../adr/007-keep-richest-merge.md)
 - **Atomic write (load-bearing)**: the destination only ever holds complete content — serialization happens before any file opens, and a failed `rename` leaves the prior file intact and drops the orphan temp. — [atomicWriteJson](../../src/store.ts#L203-L222)
 - `totals` are never read from the snapshot; always recomputed from merged models, so they can't drift from the lines. — [mergeDailyRecord/mergeSessionRecord](../../src/store.ts#L114-L141)
-- Dirty check excludes capture timestamps, so a quiet 60s re-capture neither rewrites the file nor advances `lastCapturedAt`. — [store.ts:143-144](../../src/store.ts#L143-L144)
+- Dirty check excludes capture timestamps, so a quiet re-capture neither rewrites the file nor advances `lastCapturedAt`. — [store.ts:143-144](../../src/store.ts#L143-L144)
 - Missing files read as `undefined`/`[]` (ENOENT swallowed); any other IO error throws. — [readJson](../../src/store.ts#L224-L234), [listJsonFiles](../../src/store.ts#L369-L379)
 - **Cost-field skew** [accepted]: `max()` per field can combine fields from two snapshots; cost then follows the larger-total snapshot. Fields move together in practice and counts are never lost. — [adr/007](../adr/007-keep-richest-merge.md)
 - Session shard key is the **UTC** month of `lastActivity` (`sessionMonth`), independent of the display timezone — storage-only. — [store.ts:236-239](../../src/store.ts#L236-L239)

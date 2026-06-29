@@ -144,6 +144,7 @@ export type SeriesRequest = {
 export type SeriesDataset = {
   label: string;
   data: number[]; // cost per `labels` index
+  tokens: number[]; // total tokens per `labels` index (parallel to `data`)
 };
 
 export type DashboardSeries = {
@@ -157,4 +158,23 @@ export type DashboardSeries = {
 /** Surface exposed to the renderer via the contextBridge preload. */
 export type BurnbarBridge = {
   getSeries: (request: SeriesRequest) => Promise<DashboardSeries>;
+};
+
+// --- Settings & tray state ------------------------------------------------
+
+/** Persisted user preferences (`settings.json` under userData). */
+export type AppSettings = {
+  refreshIntervalMinutes: number; // 0 = manual only (never auto-refresh)
+};
+
+/**
+ * Everything the tray renders, pushed by the CaptureService on each capture and
+ * on settings/refresh actions. Carries the display numbers plus the menu's
+ * "last updated" stamp, the 30-day spend sparkline, and the active interval.
+ */
+export type TrayState = {
+  usage: UsageData;
+  lastUpdatedAt: string | null; // ISO of the last *successful* capture
+  sparkline: number[]; // recent daily costs for the menu mini-graph (ascending)
+  refreshIntervalMinutes: number;
 };

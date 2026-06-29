@@ -18,8 +18,10 @@
 | [capture](./modules/capture.md) | ccusage spawn (DI runner) + normalizers + `toUsageData` |
 | [capture-service](./modules/capture-service.md) | `CaptureService` — one ccusage call feeding tray **and** archive |
 | [store](./modules/store.md) | `ArchiveStore` — keep-richest merge, atomic IO, manifest |
-| [derive](./modules/derive.md) | `deriveSeries` — archive → chart series (pure) |
-| [time](./modules/time.md) | `systemTimezone` / `localDateString` tz helpers |
+| [derive](./modules/derive.md) | `deriveSeries` — archive → chart series (cost + tokens, pure) |
+| [settings](./modules/settings.md) | `SettingsStore` — persisted refresh interval |
+| [sparkline](./modules/sparkline.md) | pure data → PNG mini-graph for the menu |
+| [time](./modules/time.md) | tz helpers + relative-time / interval formatting |
 | [ipc](./modules/ipc.md) | `registerArchiveIpc` — read-only `archive:get-series` |
 | [preload](./modules/preload.md) | contextBridge → `window.burnbar.getSeries` |
 | [window](./modules/window.md) | `DashboardWindow` — lazy BrowserWindow + security |
@@ -36,6 +38,7 @@
 | [usage-menu](./features/usage-menu.md) | Context menu: today + all-time, Open Dashboard, Quit |
 | [usage-archive](./features/usage-archive.md) | Durable, numbers-only capture that survives source-log purges |
 | [usage-dashboard](./features/usage-dashboard.md) | Chart.js window: cost over time, by model, by agent |
+| [usage-refresh](./features/usage-refresh.md) | Configurable cadence (15 min default), manual mode, Refresh Now |
 | [release-distribution](./features/release-distribution.md) | Building signed/notarized macOS artifacts |
 
 ## ADRs

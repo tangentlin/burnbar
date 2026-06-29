@@ -17,7 +17,7 @@ Merge every record and every per-model line by a single rule (the pure functions
 3. Record totals are always the rollup of the merged model lines (`totals = Σ models`).
 4. `firstCapturedAt` is preserved; `lastCapturedAt` advances. New date / model / session keys are added; existing ones are merged, never replaced wholesale.
 
-Because the rule is monotonic, a full-range backfill merged under it simply fills gaps — no special-casing. The store writes only when this merge changes a record's numbers (the dirty check), so the 60s tick is a no-op on quiet days.
+Because the rule is monotonic, a full-range backfill merged under it simply fills gaps — no special-casing. The store writes only when this merge changes a record's numbers (the dirty check), so a quiet refresh tick is a no-op.
 
 ## Consequences
 

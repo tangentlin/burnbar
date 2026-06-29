@@ -11,9 +11,9 @@ As a Claude Code / Codex / agent-CLI user, I want my token-usage history preserv
 
 ## How It Works
 
-The `CaptureService` owns the one ccusage `daily` call the tray already made every 60s, and additionally runs `session` at launch, on local-day rollover, and on quit. Each report is normalized to archive records and merged into the store under the **keep-richest** rule, so a later purge can never reduce stored counts. Writes are atomic (temp-then-rename) and happen only when a day's numbers change. — [capture-service.ts](../../src/capture-service.ts), [capture.ts](../../src/capture.ts), [store.ts](../../src/store.ts)
+The `CaptureService` owns the one ccusage `daily` call the tray refresh already makes (default every 15 min; configurable, 0 = manual), and additionally runs `session` at launch, on local-day rollover, and on quit. Each report is normalized to archive records and merged into the store under the **keep-richest** rule, so a later purge can never reduce stored counts. Writes are atomic (temp-then-rename) and happen only when a day's numbers change. — [capture-service.ts](../../src/capture-service.ts), [capture.ts](../../src/capture.ts), [store.ts](../../src/store.ts)
 
-```
+```text
 <userData>/archive/
 ├── manifest.json          # schemaVersion, timezone, ccusageVersion, first/last capture
 ├── daily/<YYYY-MM-DD>.json # combined totals + per-model breakdown, all agents

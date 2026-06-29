@@ -19,8 +19,11 @@
 | **SessionRecord** | One agent session keyed by `sessionId`; source for the by-agent view. | [types.ts#SessionRecord](../src/types.ts#L114-L123) |
 | **Manifest** | Archive metadata: `schemaVersion`, pinned `timezone`, observed `ccusageVersion`, first/last capture. | [types.ts#ArchiveManifest](../src/types.ts#L125-L132) |
 | **Keep richest / never shrink** | The merge rule: per token field keep `max()`; a source purge can never reduce stored counts. | [store.ts#mergeDailyRecord](../src/store.ts#L107), [ADR-007](./adr/007-keep-richest-merge.md) |
-| **Dirty check** | Write a record only when its numbers change, so the 60s tick is a no-op on quiet days. | [store.ts#mergeDaily](../src/store.ts#L297) |
-| **Series** | A chart-ready `DashboardSeries` derived from the archive for a `(range, dimension)`. | [types.ts#DashboardSeries](../src/types.ts#L149-L156) |
+| **Dirty check** | Write a record only when its numbers change, so a refresh tick is a no-op on quiet days. | [store.ts#mergeDaily](../src/store.ts#L297) |
+| **Series** | A chart-ready `DashboardSeries` derived from the archive for a `(range, dimension)`; each dataset carries parallel `data` (cost) and `tokens`. | [types.ts#DashboardSeries](../src/types.ts#L149-L156) |
+| **Refresh interval** | Minutes between auto-captures; persisted in `settings.json`. **0 = manual** (no auto-refresh). Default 15. | [types.ts#AppSettings](../src/types.ts), [settings.ts](../src/settings.ts) |
+| **Tray state** | Everything the menu renders — usage, last-updated stamp, 30-day spend sparkline, active interval — pushed by the CaptureService. | [types.ts#TrayState](../src/types.ts) |
+| **Sparkline** | A pure-rendered PNG mini-graph of recent daily spend, shown as a template image in the menu. | [sparkline.ts](../src/sparkline.ts) |
 | **Template image** | A monochrome tray icon macOS auto-tints for light/dark menu bars. | [tray.ts:27-29](../src/tray.ts#L27-L29) |
 | **ELECTRON_RUN_AS_NODE** | Env var that makes the Electron binary behave as plain Node — used to run ccusage through Burnbar's own runtime. | [capture.ts:33-41](../src/capture.ts#L33-L41) |
 | **Calculate mode** | ccusage `--mode calculate` — prices from local logs. Makes Burnbar backend-agnostic. | [capture.ts:52-58](../src/capture.ts#L52-L58) |
@@ -59,7 +62,7 @@ Two mappers bridge the halves, both in [capture.ts](../src/capture.ts): `toUsage
 
 ## Business Rules
 
-- **One ccusage `daily` call feeds both the tray and the archive** every 60s; the tray subscribes for display, the store persists on change. — [capture-service.ts](../src/capture-service.ts), [ADR-006](./adr/006-durable-usage-archive.md)
+- **One ccusage `daily` call feeds both the tray and the archive** on each refresh (default every 15 min; configurable, 0 = manual); the tray subscribes for display, the store persists on change. — [capture-service.ts](../src/capture-service.ts), [ADR-006](./adr/006-durable-usage-archive.md)
 - **First launch backfills** everything the source logs still hold (full, unfiltered capture merged under keep-richest). — [features/usage-archive.md](./features/usage-archive.md)
 - **Sessions** are captured at lower frequency — launch, local-day rollover, and quit — and sharded by UTC last-activity month, keyed by `sessionId`. — [store.ts#mergeSessions](../src/store.ts#L314)
 - **By-agent** daily figures come from sessions bucketed to their **local last-activity day** — a documented approximation that can drift slightly near day boundaries. — [derive.ts:81-106](../src/derive.ts#L81-L106)

@@ -54,7 +54,7 @@
 - **Privacy**: read-only access to the source logs; the archive holds numbers only and stays on-device; zero telemetry/network.
 - **Footprint**: a tray app plus one on-demand dashboard window; no background services.
 - **Platform**: macOS Monterey (12)+ (Electron 42 / Chromium baseline); Ventura (13)+ practically tested. — [README.md](../../README.md)
-- **Freshness**: visible cost no more than ~60s stale; the archive captures on the same cadence and on quit.
+- **Freshness**: visible cost as fresh as the chosen refresh interval (default 15 min; manual + "Refresh Now" available); the archive captures on the same cadence and on quit.
 
 ## Conceptual Data Model
 

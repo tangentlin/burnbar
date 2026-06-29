@@ -124,3 +124,54 @@ describe("deriveSeries — range presets", () => {
     expect(series.totalCost).toBe(0);
   });
 });
+
+describe("deriveSeries — token totals (parallel to cost)", () => {
+  it("carries day token totals on the none view, zero-filling gaps", () => {
+    const records = [
+      daily("2026-06-26", [model({ modelName: "m", inputTokens: 100, cost: 1 })]),
+      daily("2026-06-28", [model({ modelName: "m", inputTokens: 300, cost: 3 })]),
+    ];
+    const series = deriveSeries(records, [], {
+      range: "all",
+      dimension: "none",
+      timezone: "UTC",
+      today: "2026-06-28",
+    });
+    expect(series.datasets[0].tokens).toEqual([100, 0, 300]);
+  });
+
+  it("carries per-model tokens aligned to cost", () => {
+    const records = [
+      daily("2026-06-28", [
+        model({ modelName: "a", inputTokens: 10, cost: 1 }),
+        model({ modelName: "b", inputTokens: 20, cost: 2 }),
+      ]),
+    ];
+    const series = deriveSeries(records, [], {
+      range: "all",
+      dimension: "model",
+      timezone: "UTC",
+      today: "2026-06-28",
+    });
+    const tokens = Object.fromEntries(series.datasets.map((d) => [d.label, d.tokens]));
+    expect(tokens.a).toEqual([10]);
+    expect(tokens.b).toEqual([20]);
+  });
+
+  it("carries per-agent tokens from sessions", () => {
+    const sessions = [
+      session("s1", [model({ modelName: "m", inputTokens: 50, cost: 2 })], {
+        agent: "claude",
+        lastActivity: "2026-06-28T20:00:00.000Z",
+      }),
+    ];
+    const series = deriveSeries([], sessions, {
+      range: "all",
+      dimension: "agent",
+      timezone: "UTC",
+      today: "2026-06-28",
+    });
+    expect(series.datasets[0].label).toBe("claude");
+    expect(series.datasets[0].tokens).toEqual([50]);
+  });
+});

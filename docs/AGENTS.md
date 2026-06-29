@@ -20,8 +20,8 @@
 | Change the archive format / merge rule | [modules/store.md](./modules/store.md) → [src/store.ts](../src/store.ts) + [adr/007](./adr/007-keep-richest-merge.md) |
 | Change a dashboard chart / view | [features/usage-dashboard.md](./features/usage-dashboard.md) → [src/derive.ts](../src/derive.ts) + [src/dashboard/](../src/dashboard/) |
 | Change the menu-bar title | [features/menu-bar-cost.md](./features/menu-bar-cost.md) → [src/tray.ts](../src/tray.ts) |
-| Change the context menu rows | [features/usage-menu.md](./features/usage-menu.md) → [src/tray.ts](../src/tray.ts) |
-| Change refresh cadence | [src/capture-service.ts:15](../src/capture-service.ts#L15) (`REFRESH_INTERVAL_MS`) |
+| Change the context menu rows / sparkline / Refresh Now | [features/usage-menu.md](./features/usage-menu.md) → [src/tray.ts](../src/tray.ts), [src/sparkline.ts](../src/sparkline.ts) |
+| Change refresh cadence / manual mode / persistence | [features/usage-refresh.md](./features/usage-refresh.md) → [src/settings.ts](../src/settings.ts) + [src/capture-service.ts](../src/capture-service.ts) |
 | Add/modify shared types | [modules/types.md](./modules/types.md) → [src/types.ts](../src/types.ts) |
 | App lifecycle / wiring / quit flush | [modules/main.md](./modules/main.md) → [src/main.ts](../src/main.ts) |
 | Window security / IPC / preload | [modules/window.md](./modules/window.md), [modules/ipc.md](./modules/ipc.md), [modules/preload.md](./modules/preload.md) + [adr/008](./adr/008-dashboard-window-bundle.md) |
@@ -108,9 +108,14 @@ This is unrelated to the `ELECTRON_RUN_AS_NODE` that [src/capture.ts](../src/cap
 3. Update/extend the Vitest merge tests; run `pnpm test`. Update [modules/store.md](./modules/store.md) + [DOMAIN.md](./DOMAIN.md).
 
 ### Add or change a dashboard view
-1. Add the derivation to [derive.ts](../src/derive.ts) (keep it pure) + a test in [test/derive.test.ts](../test/derive.test.ts).
+1. Add the derivation to [derive.ts](../src/derive.ts) (keep it pure; carry `data` + `tokens`) + a test in [test/derive.test.ts](../test/derive.test.ts).
 2. Wire it through [ipc.ts](../src/ipc.ts) / [types.ts](../src/types.ts) and render in [src/dashboard/renderer.ts](../src/dashboard/renderer.ts).
 3. `pnpm build && pnpm check && pnpm test`. Update [features/usage-dashboard.md](./features/usage-dashboard.md).
+
+### Change the refresh cadence / a setting
+1. The cadence lives in [settings.ts](../src/settings.ts) (`refreshIntervalMinutes`, `0` = manual; presets in `REFRESH_PRESETS_MINUTES`); the timer + state push live in [capture-service.ts](../src/capture-service.ts); the submenu in [tray.ts](../src/tray.ts).
+2. For a new persisted setting, extend `AppSettings` in [types.ts](../src/types.ts) + [settings.ts](../src/settings.ts), thread it through `main.ts`, and add a `settings.test.ts` case.
+3. `pnpm check && pnpm test`. Update [features/usage-refresh.md](./features/usage-refresh.md) + [modules/settings.md](./modules/settings.md).
 
 ### Change the ccusage query
 1. Edit the args/flags in [capture.ts](../src/capture.ts) (`runDailyReport` / `runSessionReport`).

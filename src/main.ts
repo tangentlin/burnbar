@@ -2,6 +2,7 @@ import { app } from "electron";
 import * as path from "node:path";
 import { CaptureService } from "./capture-service.js";
 import { registerArchiveIpc } from "./ipc.js";
+import { SettingsStore } from "./settings.js";
 import { ArchiveStore } from "./store.js";
 import { systemTimezone } from "./time.js";
 import { TrayManager } from "./tray.js";
@@ -22,10 +23,29 @@ app.whenReady().then(async () => {
   }
 
   const timezone = systemTimezone();
-  const store = new ArchiveStore(path.join(app.getPath("userData"), "archive"));
-  const service = new CaptureService({ store, timezone });
+  const userData = app.getPath("userData");
+  const store = new ArchiveStore(path.join(userData, "archive"));
+  const settings = new SettingsStore(path.join(userData, "settings.json"));
+  await settings.load();
+
+  const service = new CaptureService({
+    store,
+    timezone,
+    refreshIntervalMinutes: settings.getRefreshIntervalMinutes(),
+  });
   const dashboard = new DashboardWindow();
-  const tray = new TrayManager({ onOpenDashboard: () => dashboard.open() });
+  const tray = new TrayManager({
+    onOpenDashboard: () => dashboard.open(),
+    onRefreshNow: () => void service.refreshNow(),
+    onSetRefreshInterval: (minutes) => {
+      // Update the live timer/menu immediately, then persist; a write failure is
+      // logged rather than left as an unhandled rejection.
+      service.setRefreshIntervalMinutes(minutes);
+      settings.setRefreshIntervalMinutes(minutes).catch((error) => {
+        console.error("Failed to persist refresh interval:", error);
+      });
+    },
+  });
 
   captureService = service;
   trayManager = tray;
@@ -33,7 +53,7 @@ app.whenReady().then(async () => {
 
   registerArchiveIpc(store, timezone);
   tray.initialize();
-  service.onUsage((usage) => tray.render(usage));
+  service.onState((state) => tray.render(state));
   await service.start();
 });
 

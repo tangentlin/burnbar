@@ -38,9 +38,25 @@ const RANGE_LABELS: Record<SeriesRange, string> = {
 };
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+// Token counts run to the millions; compact notation keeps tooltips readable.
+const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+
+/** "2026-06-28" → "Sun, Jun 28, 2026" (formatted in UTC so the calendar day is exact). */
+function friendlyDate(iso: string): string {
+  if (!iso) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(`${iso}T00:00:00Z`));
+}
 
 let chart: Chart | null = null;
-let range: SeriesRange = "all";
+let range: SeriesRange = "30d";
 let dimension: SeriesDimension = "none";
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -64,19 +80,31 @@ function setControlState(): void {
   }
 }
 
+// Each Chart dataset carries a parallel `tokens` array (a custom prop Chart.js
+// passes through) so the tooltip can report token counts per segment.
+type TokenDataset = { tokens: number[] };
+const tokensAt = (dataset: unknown, index: number): number =>
+  (dataset as TokenDataset).tokens?.[index] ?? 0;
+
 function draw(series: DashboardSeries): void {
   const canvas = byId<HTMLCanvasElement>("chart");
   const datasets = series.datasets.map((dataset, index) => ({
     label: dataset.label,
     data: dataset.data,
+    tokens: dataset.tokens,
     backgroundColor: PALETTE[index % PALETTE.length],
     borderWidth: 0,
     borderRadius: 2,
   }));
+  // Legend only earns its space when more than one entity is stacked.
+  const showLegend = datasets.length > 1;
 
   if (chart) {
     chart.data.labels = series.labels;
     chart.data.datasets = datasets;
+    if (chart.options.plugins?.legend) {
+      chart.options.plugins.legend.display = showLegend;
+    }
     chart.update();
     return;
   }
@@ -98,10 +126,27 @@ function draw(series: DashboardSeries): void {
         },
       },
       plugins: {
-        legend: { display: series.dimension !== "none", position: "bottom" },
+        legend: { display: showLegend, position: "bottom" },
         tooltip: {
           callbacks: {
-            label: (item) => `${item.dataset.label}: ${usd.format(Number(item.parsed.y))}`,
+            title: (items) => friendlyDate(items[0]?.label ?? ""),
+            label: (item) => {
+              const tokens = tokensAt(item.dataset, item.dataIndex);
+              return `${item.dataset.label}: ${usd.format(Number(item.parsed.y))} · ${compact.format(tokens)} tokens`;
+            },
+            // Day total when several entities stack (single series is already its own total).
+            footer: (items) => {
+              if (items.length <= 1) {
+                return "";
+              }
+              let cost = 0;
+              let tokens = 0;
+              for (const item of items) {
+                cost += Number(item.parsed.y);
+                tokens += tokensAt(item.dataset, item.dataIndex);
+              }
+              return `Total: ${usd.format(cost)} · ${compact.format(tokens)} tokens`;
+            },
           },
         },
       },

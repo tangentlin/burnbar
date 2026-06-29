@@ -2,12 +2,14 @@
 
 ## User Story
 
-As a Claude Code user, I want a click to reveal today's and all-time cost and token counts, plus a way to quit.
+As a Claude Code user, I want a click to reveal today's and all-time cost and token counts, a 30-day spend glance, when it last updated, and controls to refresh or change the cadence — plus a way to quit.
 
 ## Scope
 
-**Includes:** context menu with "Today's Usage" (cost + tokens), "All-Time Usage" (cost + tokens), separators, and "Quit"; empty and error fallbacks.
-**Excludes:** any interactive/actionable rows — every usage row is `enabled: false` (display-only).
+**Includes:** context menu with "Today's Usage" and "All-Time Usage" (cost + tokens); a clickable **30-day spend sparkline** (opens the dashboard); a relative-time "Updated …" row; "Refresh Now"; an "Auto-Refresh" submenu (Manual / 5 / 10 / 15 / 30 / 60 min); "Open Usage Dashboard…"; "Quit"; empty and error fallbacks.
+**Excludes:** free-form interval entry (presets only; a non-preset value set in `settings.json` is honored and shown as "Custom"); editing usage rows (every usage row stays `enabled: false`).
+
+The sparkline (a template `NativeImage`), last-updated formatting, and Auto-Refresh submenu are detailed in [modules/tray.md](../modules/tray.md); the cadence/persistence lives in [features/usage-refresh.md](./usage-refresh.md).
 
 ## UX Flow
 

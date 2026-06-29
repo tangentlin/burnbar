@@ -25,7 +25,7 @@ flowchart TD
     svc -->|runDaily/Session| capture["capture.ts<br/>spawn + normalize"]
     capture -->|execFile ELECTRON_RUN_AS_NODE| ccusage["ccusage CLI"]
     ccusage -->|reads| logs[("agent CLI logs")]
-    svc -->|onUsage UsageData| tray
+    svc -->|onState TrayState| tray
     svc -->|merge records| store["ArchiveStore (store.ts)"]
     store -->|atomic JSON| archive[("userData/archive")]
     tray -->|Open Dashboard| win
@@ -48,10 +48,10 @@ sequenceDiagram
     participant C as capture.ts → ccusage
     participant T as TrayManager
     participant A as ArchiveStore
-    Note over S: every 60s (+ launch, + quit)
+    Note over S: every refresh interval (default 15m; + launch, + quit, + Refresh Now)
     S->>C: runDailyReport(tz)
     C-->>S: CcusageDailyReport
-    S->>T: onUsage(UsageData {daily,total}|{error})
+    S->>T: onState(TrayState {usage, lastUpdatedAt, sparkline, interval})
     S->>A: mergeDaily(record) per date — writes only on change (dirty check)
     Note over S,A: sessions on launch / day-rollover / quit → mergeSessions
 ```
@@ -82,7 +82,7 @@ Writes are atomic (temp-then-rename) and gated by a schema-compatibility check; 
 
 ### Performance
 
-One ccusage `daily` spawn per 60s serves both tray and archive; the `dailyCache` skips disk work on unchanged days; sessions (heavier) run only at launch / rollover / quit. ccusage stdout is buffered up to 256 MiB. — [capture-service.ts](../src/capture-service.ts), [capture.ts:33-41](../src/capture.ts#L33-L41)
+One ccusage `daily` spawn per refresh interval (default 15 min, user-configurable; 0 = manual) serves both tray and archive; the `dailyCache` skips disk work on unchanged days; sessions (heavier) run only at launch / rollover / quit. ccusage stdout is buffered up to 256 MiB. — [capture-service.ts](../src/capture-service.ts), [capture.ts:33-41](../src/capture.ts#L33-L41)
 
 ### Window Security
 

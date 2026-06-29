@@ -7,42 +7,46 @@ import {
   runSessionReport,
   toUsageData,
 } from "./capture.js";
+import { deriveSeries } from "./derive.js";
 import { type ArchiveStore, dailyContentEqual } from "./store.js";
 import { localDateString, systemTimezone } from "./time.js";
 import type { CcusageRunner } from "./capture.js";
-import type { DailyRecord, UsageData } from "./types.js";
+import type { DailyRecord, TrayState, UsageData } from "./types.js";
 
-const REFRESH_INTERVAL_MS = 60_000;
+const DEFAULT_REFRESH_INTERVAL_MINUTES = 15;
+const SPARKLINE_DAYS = 30;
 
 export type CaptureServiceOptions = {
   store: ArchiveStore;
   runner?: CcusageRunner;
   timezone?: string;
-  intervalMs?: number;
+  refreshIntervalMinutes?: number; // 0 = manual (never auto-refresh)
   // Injectable clock keeps capture stamps and day-rollover detection testable.
   now?: () => Date;
 };
 
 /**
- * Single owner of the recurring ccusage `daily` call that drives both the tray
- * and the archive (SRP — the tray became a pure display consumer). Daily is
- * captured on the 60s tick and written only when a day's numbers change; the
- * heavier `session` capture runs on launch, on local-day rollover, and on quit.
- * Capture is best-effort: a ccusage failure logs and leaves the archive intact.
+ * Single owner of the recurring ccusage call that drives both the tray and the
+ * archive (SRP — the tray is a pure display consumer). The display refresh fires
+ * on the user-configurable interval (or never, in manual mode) and on demand via
+ * {@link refreshNow}; the heavier `session` capture runs on launch, on local-day
+ * rollover, and on quit. Capture is best-effort: a ccusage fetch failure surfaces
+ * to the tray, but an archive-write failure is logged without disturbing the
+ * freshly-fetched numbers.
  */
 export class CaptureService {
   private readonly store: ArchiveStore;
   private readonly runner: CcusageRunner;
   private readonly timezone: string;
-  private readonly intervalMs: number;
   private readonly now: () => Date;
 
-  private usageListener: ((usage: UsageData) => void) | null = null;
+  private refreshIntervalMinutes: number;
+  private stateListener: ((state: TrayState) => void) | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private currentDay: string;
   private latestUsage: UsageData = { daily: null, total: null };
-  // Last normalized record seen per date — lets the tick skip disk work on
-  // unchanged days without re-reading every daily file every minute.
+  private lastUpdatedAt: string | null = null; // last *successful* fetch
+  private sparkline: number[] = []; // recent daily costs for the menu mini-graph
   private readonly dailyCache = new Map<string, DailyRecord>();
   private archiveWritable = true;
   private flushed = false;
@@ -51,13 +55,19 @@ export class CaptureService {
     this.store = options.store;
     this.runner = options.runner ?? defaultCcusageRunner;
     this.timezone = options.timezone ?? systemTimezone();
-    this.intervalMs = options.intervalMs ?? REFRESH_INTERVAL_MS;
     this.now = options.now ?? (() => new Date());
+    this.refreshIntervalMinutes = normalizeMinutes(
+      options.refreshIntervalMinutes ?? DEFAULT_REFRESH_INTERVAL_MINUTES,
+    );
     this.currentDay = localDateString(this.timezone, this.now());
   }
 
-  onUsage(listener: (usage: UsageData) => void): void {
-    this.usageListener = listener;
+  onState(listener: (state: TrayState) => void): void {
+    this.stateListener = listener;
+  }
+
+  getState(): TrayState {
+    return this.buildState();
   }
 
   getUsage(): UsageData {
@@ -68,11 +78,13 @@ export class CaptureService {
     return this.timezone;
   }
 
-  /** Initial capture (daily + sessions) then start the refresh timer. */
+  getRefreshIntervalMinutes(): number {
+    return this.refreshIntervalMinutes;
+  }
+
+  /** Initial capture (daily + sessions) then start the refresh timer (if any). */
   async start(): Promise<void> {
-    // Refuse to write into an archive a newer Burnbar wrote (schemaVersion ahead
-    // of this build): a downgrade merging into a future format could corrupt it.
-    // The tray still works — it reads ccusage live, not the archive.
+    // Refuse to write into an archive a newer Burnbar wrote; the tray still works.
     this.archiveWritable = await this.store.isSchemaCompatible();
     if (!this.archiveWritable) {
       console.warn(
@@ -81,9 +93,32 @@ export class CaptureService {
     }
     await this.captureDaily();
     await this.captureSessions();
-    this.timer = setInterval(() => {
-      void this.tick();
-    }, this.intervalMs);
+    this.scheduleTimer();
+  }
+
+  /** Change the auto-refresh cadence live (minutes; 0 = manual) and re-push state. */
+  setRefreshIntervalMinutes(minutes: number): void {
+    this.refreshIntervalMinutes = normalizeMinutes(minutes);
+    this.scheduleTimer();
+    this.pushState();
+  }
+
+  /** Force an immediate refresh (the tray's "Refresh Now"). */
+  async refreshNow(): Promise<void> {
+    await this.captureDaily();
+    await this.captureSessions();
+  }
+
+  private scheduleTimer(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    if (this.refreshIntervalMinutes > 0) {
+      this.timer = setInterval(() => {
+        void this.tick();
+      }, this.refreshIntervalMinutes * 60_000);
+    }
   }
 
   private async tick(): Promise<void> {
@@ -97,36 +132,46 @@ export class CaptureService {
   }
 
   private async captureDaily(): Promise<void> {
+    let report;
     try {
-      const report = await runDailyReport(this.runner, this.timezone);
-      const today = localDateString(this.timezone, this.now());
-      this.latestUsage = toUsageData(report, today);
-      this.usageListener?.(this.latestUsage);
-      if (!this.archiveWritable) {
-        return;
-      }
-
-      const capturedAt = this.now().toISOString();
-      const records = normalizeDailyReport(report, this.timezone, capturedAt);
-      let changedAny = false;
-      for (const record of records) {
-        const cached = this.dailyCache.get(record.date);
-        if (cached && dailyContentEqual(cached, record)) {
-          continue;
-        }
-        // Cache the authoritative merged record (not the raw incoming): a purged
-        // snapshot merges to the richer stored value, and the cache must mirror
-        // disk so the dirty check never diverges from it.
-        const { changed, record: merged } = await this.store.mergeDaily(record);
-        this.dailyCache.set(record.date, merged);
-        changedAny = changedAny || changed;
-      }
-      if (changedAny) {
-        await this.touchManifest(capturedAt);
-      }
+      report = await runDailyReport(this.runner, this.timezone);
     } catch (error) {
+      // Fetch failed → surface to the tray; do not advance "last updated".
       this.reportDailyFailure(error);
+      return;
     }
+
+    const nowDate = this.now();
+    const today = localDateString(this.timezone, nowDate);
+    this.latestUsage = toUsageData(report, today);
+    this.lastUpdatedAt = nowDate.toISOString();
+
+    // The archive write + sparkline derivation are best-effort: a failure here
+    // must never erase the numbers we already fetched and displayed.
+    try {
+      if (this.archiveWritable) {
+        const records = normalizeDailyReport(report, this.timezone, this.lastUpdatedAt);
+        let changedAny = false;
+        for (const record of records) {
+          const cached = this.dailyCache.get(record.date);
+          if (cached && dailyContentEqual(cached, record)) {
+            continue;
+          }
+          // Cache the authoritative merged record so the dirty check mirrors disk.
+          const { changed, record: merged } = await this.store.mergeDaily(record);
+          this.dailyCache.set(record.date, merged);
+          changedAny = changedAny || changed;
+        }
+        if (changedAny) {
+          await this.touchManifest(this.lastUpdatedAt);
+        }
+      }
+      this.sparkline = await this.computeSparkline(today);
+    } catch (error) {
+      console.error("archive write/derive failed (display unaffected):", error);
+    }
+
+    this.pushState();
   }
 
   private async captureSessions(): Promise<void> {
@@ -142,10 +187,21 @@ export class CaptureService {
         await this.touchManifest(capturedAt);
       }
     } catch (error) {
-      // Sessions feed only the by-agent view; a failure must never disturb the
-      // tray, so unlike daily it stays silent beyond the log.
+      // Sessions feed only the by-agent view; a failure stays silent beyond the log.
       console.error("ccusage session capture failed:", error);
     }
+  }
+
+  /** Last `SPARKLINE_DAYS` of total daily cost (zero-filled), matching the dashboard. */
+  private async computeSparkline(today: string): Promise<number[]> {
+    const daily = await this.store.readAllDaily();
+    const series = deriveSeries(daily, [], {
+      range: "30d",
+      dimension: "none",
+      timezone: this.timezone,
+      today,
+    });
+    return series.datasets[0]?.data.slice(-SPARKLINE_DAYS) ?? [];
   }
 
   private async touchManifest(capturedAt: string): Promise<void> {
@@ -159,13 +215,26 @@ export class CaptureService {
   private reportDailyFailure(error: unknown): void {
     console.error("ccusage daily capture failed:", error);
     // Preserve the prior menu behavior: a failed fetch surfaces as an error row
-    // and a cleared title rather than silently keeping stale numbers.
+    // and a cleared title. `lastUpdatedAt`/`sparkline` keep their last-good values.
     this.latestUsage = {
       daily: null,
       total: null,
       error: error instanceof Error ? error.message : String(error),
     };
-    this.usageListener?.(this.latestUsage);
+    this.pushState();
+  }
+
+  private buildState(): TrayState {
+    return {
+      usage: this.latestUsage,
+      lastUpdatedAt: this.lastUpdatedAt,
+      sparkline: this.sparkline,
+      refreshIntervalMinutes: this.refreshIntervalMinutes,
+    };
+  }
+
+  private pushState(): void {
+    this.stateListener?.(this.buildState());
   }
 
   /** Final best-effort flush so the last interval's data is persisted on quit. */
@@ -184,4 +253,11 @@ export class CaptureService {
       this.timer = null;
     }
   }
+}
+
+function normalizeMinutes(minutes: number): number {
+  if (!Number.isFinite(minutes) || minutes < 0) {
+    return 0;
+  }
+  return Math.floor(minutes);
 }

@@ -15,7 +15,7 @@ Persist a durable archive the source tools cannot reach, under `app.getPath("use
 ## Consequences
 
 - (+) Burnbar becomes the system of record for agent usage on the machine; history survives source purges.
-- (+) Captures piggyback the existing 60s refresh and a quit flush — no extra ccusage spawns on the hot path; sessions captured at lower frequency (launch / day-rollover / quit).
+- (+) Captures piggyback the existing tray refresh (then a configurable interval, default 15 min) and a quit flush — no extra ccusage spawns on the hot path; sessions captured at lower frequency (launch / day-rollover / quit).
 - (+) Numbers-only + `userData`-only + no network keeps the privacy posture identical to before (nothing leaves the machine).
 - (−) First run can only reach back as far as the source logs still hold — anything pruned before Burnbar's first launch is already unrecoverable. Mitigation: capture early and often.
 - (−) Adds a persistence layer (atomic IO, sharding, a manifest/migration story) the tray-only app did not previously have.

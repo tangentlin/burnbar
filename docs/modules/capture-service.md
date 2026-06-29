@@ -2,75 +2,92 @@
 
 ## Purpose
 
-Single owner of the recurring ccusage `daily` call that drives both the tray and the durable archive: it ticks every 60s, writes only when numbers change, and captures the heavier `session` report on launch, day-rollover, and quit.
+Single owner of the recurring ccusage call that drives both the tray and the durable archive. It refreshes the display on a user-configurable interval (or never, in manual mode) and on demand, captures the heavier `session` report on launch / day-rollover / quit, and pushes a `TrayState` to its lone listener after each capture.
 
 ## Public Surface
 
 | Export | Type | File |
 |--------|------|------|
-| `CaptureService` | class | [capture-service.ts:33](../../src/capture-service.ts#L33) |
-| `CaptureServiceOptions` | injectable deps (store + runner/clock/tz/interval seams) | [capture-service.ts:17](../../src/capture-service.ts#L17) |
+| `CaptureService` | class | [capture-service.ts:37](../../src/capture-service.ts#L37) |
+| `CaptureServiceOptions` | injectable deps (store + runner/clock/tz/interval seams) | [capture-service.ts:19](../../src/capture-service.ts#L19) |
 
-Instance API: `start()`, `flush()`, `dispose()`, `onUsage()`, `getUsage()`, `getTimezone()`. The `tick`/`captureDaily`/`captureSessions`/`touchManifest`/`reportDailyFailure` methods are private.
+Instance API — lifecycle: `start()`, `flush()`, `dispose()`; reads: `getState()`, `getUsage()`, `getTimezone()`, `getRefreshIntervalMinutes()`; wiring: `onState(listener)`; commands: `setRefreshIntervalMinutes()`, `refreshNow()`. Module-private: the `scheduleTimer`/`tick`/`captureDaily`/`captureSessions`/`computeSparkline`/`touchManifest`/`reportDailyFailure`/`buildState`/`pushState` methods and the `normalizeMinutes` floor. — [capture-service.ts:112-263](../../src/capture-service.ts#L112-L263)
 
 ## Responsibilities
 
-- Own the 60s refresh timer; `start()` does the initial daily+session capture, then schedules ticks. — [capture-service.ts:72-87](../../src/capture-service.ts#L72-L87)
-- Push each fresh daily result to the tray via the `onUsage` listener (the tray is a pure consumer). — [capture-service.ts:103-104](../../src/capture-service.ts#L103-L104)
-- Skip disk work on unchanged days using an in-memory dirty cache keyed by date. — [capture-service.ts:112-123](../../src/capture-service.ts#L112-L123)
-- Capture `session` data on launch, on local-day rollover, and on the final flush. — [capture-service.ts:83](../../src/capture-service.ts#L83), [capture-service.ts:94-96](../../src/capture-service.ts#L94-L96), [capture-service.ts:178](../../src/capture-service.ts#L178)
-- Touch the manifest (timezone, ccusage version, capture stamp) only when a merge actually wrote. — [capture-service.ts:124-126](../../src/capture-service.ts#L124-L126), [capture-service.ts:151-157](../../src/capture-service.ts#L151-L157)
-- Gate all writes on `archiveWritable` (schema-compat check at `start()`). — [capture-service.ts:76-81](../../src/capture-service.ts#L76-L81)
+- Own the refresh timer: `start()` does the initial daily+session capture, then schedules ticks via `scheduleTimer` (only when `refreshIntervalMinutes > 0`). — [capture-service.ts:86-97](../../src/capture-service.ts#L86-L97), [capture-service.ts:112-122](../../src/capture-service.ts#L112-L122)
+- Reschedule live and re-push state when the cadence changes (`0` = manual, clears the timer). — [setRefreshIntervalMinutes](../../src/capture-service.ts#L100)
+- Refresh on demand for the tray's "Refresh Now" (daily + sessions). — [refreshNow](../../src/capture-service.ts#L107)
+- Push every capture's result to its listener as a `TrayState` (tray is a pure consumer). — [pushState/buildState](../../src/capture-service.ts#L227)
+- Track `lastUpdatedAt` as the last *successful* fetch; a failed fetch leaves it untouched. — [capture-service.ts:147](../../src/capture-service.ts#L147), [capture-service.ts:217-218](../../src/capture-service.ts#L217-L218)
+- Compute the 30-day spend sparkline via `deriveSeries` over `store.readAllDaily()`. — [computeSparkline](../../src/capture-service.ts#L196)
+- Capture `session` data on launch, on local-day rollover, and on quit-flush. — [capture-service.ts:95](../../src/capture-service.ts#L95), [capture-service.ts:129-131](../../src/capture-service.ts#L129-L131), [capture-service.ts:247](../../src/capture-service.ts#L247)
+- Touch the manifest only when a merge actually wrote. — [touchManifest](../../src/capture-service.ts#L207), [capture-service.ts:165-167](../../src/capture-service.ts#L165-L167)
+- Gate all writes on `archiveWritable` (schema-compat check at `start()`). — [capture-service.ts:88-93](../../src/capture-service.ts#L88-L93)
 
 ## Non-Goals
 
 - No ccusage spawning/parsing or normalization — that is [capture](./capture.md).
 - No disk layout, merge math, or atomic IO — that is [store](./store.md).
 - No formatting or rendering — that is [tray](./tray.md).
-- No dashboard read path — the dashboard reads the archive directly (see [window](./window.md)).
+- No persistence of the configured interval — that round-trips through [settings](./settings.md) before reaching `CaptureServiceOptions`.
 
 ## How It Works
 
-`start()` first calls `store.isSchemaCompatible()` and latches `archiveWritable`; if a newer Burnbar wrote the archive, writes are disabled for the session but the tray still works (it reads live ccusage). Each `tick()` recomputes today's local date, detects day-rollover, runs `captureDaily()`, and adds `captureSessions()` only on rollover. `captureDaily()` always refreshes `latestUsage` and notifies the listener first, then (if writable) normalizes the report and, per date, consults `dailyCache` before merging — caching the **merged** record the store returns so the dirty check mirrors disk.
+`start()` latches `archiveWritable` from `store.isSchemaCompatible()`; if a newer Burnbar wrote the archive, writes are disabled for the session but the tray still works (it reads live ccusage). The core change (per [adr/006](../adr/006-durable-usage-archive.md)) is that **`captureDaily` splits two concerns**: the ccusage *fetch* is mandatory and owns the display, while the *archive write + sparkline derivation* is best-effort.
+
+- **Fetch leg** — `runDailyReport` failure routes to `reportDailyFailure` (tray error row, cleared title) and returns early, so `lastUpdatedAt` and the sparkline keep their last-good values. On success, `latestUsage` and `lastUpdatedAt` advance *before* any disk work.
+- **Persist leg** — wrapped in its own try/catch: if writable, it normalizes the report, and per date consults `dailyCache` before merging, caching the **merged** record the store returns so the dirty check mirrors disk; then it recomputes the sparkline. Any throw here is logged only — the freshly-fetched numbers already pushed are never erased.
+
+`tick()` recomputes today's local date, detects rollover, runs `captureDaily()`, and adds `captureSessions()` only on rollover. `flush()` is the idempotent quit path.
 
 ```mermaid
 flowchart LR
   tick --> daily[captureDaily]
-  daily --> tray((onUsage → tray))
-  daily -->|writable & changed| merge[store.mergeDaily]
+  daily -->|fetch fail| err[reportDailyFailure → tray error]
+  daily -->|fetch ok| disp[latestUsage + lastUpdatedAt advance]
+  disp --> push((onState → tray))
+  disp -.->|writable & changed| merge[store.mergeDaily → cache merged]
+  disp -.->|write/derive throw| log[log only · display intact]
   tick -->|day rollover| sessions[captureSessions]
-  daily -->|fail| err[reportDailyFailure → tray error]
 ```
 
 ## Key Types
 
 | Type | Purpose | File |
 |------|---------|------|
-| `UsageData` | Tray-facing daily/total snapshot held in `latestUsage` | [types.ts#UsageData](../../src/types.ts) |
-| `DailyRecord` | Authoritative merged record cached per date | [types.ts#DailyRecord](../../src/types.ts) |
+| `TrayState` | Pushed snapshot: usage + lastUpdatedAt + sparkline + interval | [types.ts#TrayState](../../src/types.ts#L175-L180) |
+| `UsageData` | Tray-facing daily/total numbers held in `latestUsage` | [types.ts#UsageData](../../src/types.ts#L13-L17) |
+| `DailyRecord` | Authoritative merged record cached per date | [types.ts#DailyRecord](../../src/types.ts#L100-L108) |
 | `CcusageRunner` | Injected ccusage invoker (default spawns the bundled CLI) | [capture.ts:31](../../src/capture.ts#L31) |
-| `ArchiveStore` | Merge/dirty-check/atomic-IO collaborator | [store.ts:243](../../src/store.ts#L243) |
+| `ArchiveStore` | Merge / dirty-check / atomic-IO collaborator | [store.ts:243](../../src/store.ts#L243) |
 
 ## Invariants & Failure Modes
 
-- **dailyCache mirrors disk**: the cache stores the store's merged record, not the raw incoming one — a purged snapshot merges to the richer stored value, so the dirty check never diverges. — [capture-service.ts:117-121](../../src/capture-service.ts#L117-L121), see [adr/007-keep-richest-merge.md](../adr/007-keep-richest-merge.md)
-- **Daily failure surfaces; sessions stay silent**: a daily-capture throw becomes a tray error row with a cleared title; a session throw only logs and never disturbs the tray. — [capture-service.ts:159-169](../../src/capture-service.ts#L159-L169), [capture-service.ts:144-148](../../src/capture-service.ts#L144-L148)
-- **Best-effort capture**: a ccusage failure leaves the archive intact (no partial writes; the store's IO is atomic). — [capture-service.ts:30-31](../../src/capture-service.ts#L30-L31)
-- **Schema-compat gate**: when the on-disk schema is newer than this build, `archiveWritable` is false and both daily and session writes are skipped for the session. — [capture-service.ts:76-81](../../src/capture-service.ts#L76-L81), [capture-service.ts:105-107](../../src/capture-service.ts#L105-L107), [capture-service.ts:132-135](../../src/capture-service.ts#L132-L135)
-- **flush() runs at most once**: the `flushed` latch makes the `before-quit` flush idempotent so a deferred quit can't double-capture. — [capture-service.ts:172-179](../../src/capture-service.ts#L172-L179)
-- **Manifest stamp tracks real writes**: `touchManifest` runs only when a merge reported a change, so quiet 60s ticks don't churn the manifest. — [capture-service.ts:124-126](../../src/capture-service.ts#L124-L126)
+- **Fetch failure never advances "last updated" (load-bearing)**: a `runDailyReport` throw surfaces as a tray error and returns before `lastUpdatedAt`/`latestUsage`/`sparkline` move, so the menu shows the last-good stamp, not a fresh one. — [capture-service.ts:138-142](../../src/capture-service.ts#L138-L142), [reportDailyFailure](../../src/capture-service.ts#L215)
+- **Write/derive failure is invisible to the display (load-bearing)**: the archive write and sparkline live in a separate try/catch *after* the display is updated and pushed; a throw is logged and the numbers stand. — [capture-service.ts:149-174](../../src/capture-service.ts#L149-L174)
+- **dailyCache mirrors disk (keep-richest)**: the cache stores the store's *merged* record, not the raw incoming one — a leaner snapshot merges up to the richer stored value, so the dirty check never diverges. — [capture-service.ts:160-162](../../src/capture-service.ts#L160-L162), [adr/007](../adr/007-keep-richest-merge.md)
+- **Daily failure surfaces; sessions stay silent**: a session throw only logs and never disturbs the tray (sessions feed only the by-agent view). — [captureSessions](../../src/capture-service.ts#L189-L192)
+- **Schema-compat gate**: when the on-disk schema is newer than this build, `archiveWritable` is false and both daily and session writes are skipped for the session. — [capture-service.ts:88-93](../../src/capture-service.ts#L88-L93), [capture-service.ts:152](../../src/capture-service.ts#L152), [capture-service.ts:178-180](../../src/capture-service.ts#L178-L180)
+- **Day-rollover triggers a session capture**: `tick()` re-derives the local date and runs sessions only when it changed, so a session crossing midnight is re-snapshotted into the new shard. — [tick](../../src/capture-service.ts#L124)
+- **flush() runs at most once**: the `flushed` latch makes the quit flush idempotent so a deferred `before-quit` can't double-capture. — [flush](../../src/capture-service.ts#L241)
+- **Manifest stamp tracks real writes**: `touchManifest` runs only when a merge reported a change, so quiet ticks don't churn the manifest. — [capture-service.ts:165-167](../../src/capture-service.ts#L165-L167), [capture-service.ts:186-188](../../src/capture-service.ts#L186-L188)
+- **Interval is floored & non-negative**: `normalizeMinutes` drops non-finite/negative values to `0` (manual) and floors the rest. — [normalizeMinutes](../../src/capture-service.ts#L258)
 
 ## Extension Points
 
-- **Test seams**: inject `runner`, `now`, `timezone`, and `intervalMs` via `CaptureServiceOptions` to drive capture deterministically without spawning ccusage or waiting on wall-clock. — [capture-service.ts:17-24](../../src/capture-service.ts#L17-L24)
-- **New capture cadence**: add report kinds or change rollover behavior in `tick()`; keep the dirty-cache discipline when adding writes. — [capture-service.ts:89-97](../../src/capture-service.ts#L89-L97)
-- **Lifecycle wiring**: `start`/`flush`/`dispose` are called from `main.ts`; `before-quit` defers once to flush best-effort. — [main.ts](../../src/main.ts)
+- **Test seams**: inject `runner`, `now`, `timezone`, and `refreshIntervalMinutes` via `CaptureServiceOptions` to drive capture deterministically without spawning ccusage or waiting on wall-clock. — [capture-service.ts:19-26](../../src/capture-service.ts#L19-L26)
+- **New capture cadence**: add report kinds or change rollover behavior in `tick()`; keep the dirty-cache discipline when adding writes. — [tick](../../src/capture-service.ts#L124)
+- **Sparkline window**: `SPARKLINE_DAYS` (and the `30d` range) set the menu mini-graph span — match the dashboard if you change one. — [capture-service.ts:17](../../src/capture-service.ts#L17), [computeSparkline](../../src/capture-service.ts#L196)
+- **Lifecycle wiring**: `start`/`flush`/`dispose` and `setRefreshIntervalMinutes` are driven from [main](./main.md) via [ipc](./ipc.md) and [settings](./settings.md).
 
 ## Related Files
 
 - [capture.ts](../../src/capture.ts) — ccusage runner + normalization ([capture](./capture.md)).
 - [store.ts](../../src/store.ts) — merge, dirty check, atomic archive IO ([store](./store.md)).
+- [derive.ts](../../src/derive.ts) — `deriveSeries` powering the sparkline ([derive](./derive.md)).
 - [time.ts](../../src/time.ts) — `localDateString` / `systemTimezone` ([time](./time.md)).
 - [main.ts](../../src/main.ts) — owns the service and quit flush ([main](./main.md)).
-- [adr/006-durable-usage-archive.md](../adr/006-durable-usage-archive.md) — why a single owner feeds tray + archive.
-- [features/usage-archive.md](../features/usage-archive.md) — the durable-archive feature this serves.
+- [adr/006-durable-usage-archive.md](../adr/006-durable-usage-archive.md) — why one owner feeds tray + archive, and the fetch/write split.
+- [adr/007-keep-richest-merge.md](../adr/007-keep-richest-merge.md) — the merge rule the dirty cache relies on.
+- Features: [usage-refresh.md](../features/usage-refresh.md), [usage-archive.md](../features/usage-archive.md), [usage-menu.md](../features/usage-menu.md).

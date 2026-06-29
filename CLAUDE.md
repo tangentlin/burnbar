@@ -87,7 +87,7 @@ npm run dist:mac:universal  # Build universal macOS app
 Single Electron **main** process, tray-first, with one on-demand dashboard window. The full module map and data-flow diagrams live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — this is the orientation:
 
 - **`src/main.ts`** — wires the collaborators (`ArchiveStore`, `CaptureService`, `TrayManager`, `DashboardWindow`, archive IPC), hides the Dock, and runs a bounded quit-time flush.
-- **`src/capture-service.ts`** — `CaptureService` owns the single ccusage `daily` call that feeds **both** the tray and the archive every 60s (sessions on launch / day-rollover / quit). Best-effort: a failure never crashes the tray.
+- **`src/capture-service.ts`** — `CaptureService` owns the single ccusage `daily` call that feeds **both** the tray and the archive on the configurable refresh interval (default 15 min; `0` = manual) plus "Refresh Now" (sessions on launch / day-rollover / quit). Best-effort: a failure never crashes the tray.
 - **`src/capture.ts`** — spawns ccusage through a dependency-injected runner and normalizes `daily`/`session` reports into archive records; also derives the tray `UsageData`. (Absorbed the old `usage.ts`.)
 - **`src/store.ts`** — `ArchiveStore`: the **pure** "keep richest, never shrink" merge plus atomic temp-then-rename JSON IO, monthly-sharded sessions, and the manifest. Highest-stakes module.
 - **`src/derive.ts`** — **pure** archive → `DashboardSeries` (cost over time, by model, by agent; 30d/90d/all).
@@ -142,9 +142,11 @@ src/
 ├── capture-service.ts # Owns the ccusage call feeding tray + archive
 ├── capture.ts         # ccusage spawn (DI runner) + normalizers + toUsageData
 ├── store.ts           # ArchiveStore: keep-richest merge + atomic IO + manifest
-├── derive.ts          # Pure archive → dashboard series
-├── time.ts            # systemTimezone / localDateString
-├── tray.ts            # Display-only tray (title, menu, Open Dashboard)
+├── derive.ts          # Pure archive → dashboard series (cost + tokens)
+├── settings.ts        # Persisted preferences (refresh interval; 0 = manual)
+├── sparkline.ts       # Pure data → PNG mini-graph for the menu glance
+├── time.ts            # tz helpers + relative-time / interval formatting
+├── tray.ts            # Display-only tray: title, menu, sparkline, Refresh, Auto-Refresh
 ├── ipc.ts             # Read-only archive:get-series handler
 ├── preload.mts        # contextBridge → window.burnbar.getSeries (→ preload.mjs)
 ├── window.ts          # DashboardWindow (BrowserWindow + security)

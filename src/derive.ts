@@ -55,8 +55,12 @@ function sessionLocalDate(session: SessionRecord, tz: string): string | null {
 }
 
 function costByDate(daily: DailyRecord[], labels: string[]): SeriesDataset {
-  const byDate = new Map(daily.map((record) => [record.date, record.totals.totalCost]));
-  return { label: "Cost", data: labels.map((date) => byDate.get(date) ?? 0) };
+  const byDate = new Map(daily.map((record) => [record.date, record.totals]));
+  return {
+    label: "Cost",
+    data: labels.map((date) => byDate.get(date)?.totalCost ?? 0),
+    tokens: labels.map((date) => byDate.get(date)?.totalTokens ?? 0),
+  };
 }
 
 function costByModel(
@@ -69,13 +73,15 @@ function costByModel(
   const modelNames = [
     ...new Set(visible.flatMap((record) => record.models.map((model) => model.modelName))),
   ].sort();
-  return modelNames.map((modelName) => ({
-    label: modelName,
-    data: labels.map((date) => {
-      const model = byDate.get(date)?.models.find((entry) => entry.modelName === modelName);
-      return model?.cost ?? 0;
-    }),
-  }));
+  return modelNames.map((modelName) => {
+    const lineFor = (date: string) =>
+      byDate.get(date)?.models.find((entry) => entry.modelName === modelName);
+    return {
+      label: modelName,
+      data: labels.map((date) => lineFor(date)?.cost ?? 0),
+      tokens: labels.map((date) => lineFor(date)?.totalTokens ?? 0),
+    };
+  });
 }
 
 function costByAgent(
@@ -87,21 +93,32 @@ function costByAgent(
   // Aggregate sessions to (local last-activity day, agent). Known v1 approximation:
   // a long session lands wholly on its last-activity day, so by-agent daily totals
   // can drift slightly from the authoritative daily totals near day boundaries.
-  const byDateAgent = new Map<string, Map<string, number>>();
+  const costByDateAgent = new Map<string, Map<string, number>>();
+  const tokensByDateAgent = new Map<string, Map<string, number>>();
   const agents = new Set<string>();
+  const add = (
+    map: Map<string, Map<string, number>>,
+    date: string,
+    agent: string,
+    value: number,
+  ) => {
+    const perAgent = map.get(date) ?? new Map<string, number>();
+    perAgent.set(agent, (perAgent.get(agent) ?? 0) + value);
+    map.set(date, perAgent);
+  };
   for (const session of sessions) {
     const date = sessionLocalDate(session, tz);
     if (date === null || !inRange.has(date)) {
       continue;
     }
     agents.add(session.agent);
-    const perAgent = byDateAgent.get(date) ?? new Map<string, number>();
-    perAgent.set(session.agent, (perAgent.get(session.agent) ?? 0) + session.totals.totalCost);
-    byDateAgent.set(date, perAgent);
+    add(costByDateAgent, date, session.agent, session.totals.totalCost);
+    add(tokensByDateAgent, date, session.agent, session.totals.totalTokens);
   }
   return [...agents].sort().map((agent) => ({
     label: agent,
-    data: labels.map((date) => byDateAgent.get(date)?.get(agent) ?? 0),
+    data: labels.map((date) => costByDateAgent.get(date)?.get(agent) ?? 0),
+    tokens: labels.map((date) => tokensByDateAgent.get(date)?.get(agent) ?? 0),
   }));
 }
 

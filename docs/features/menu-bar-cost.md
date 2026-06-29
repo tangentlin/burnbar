@@ -6,7 +6,7 @@ As a Claude Code user, I want today's spend visible in my menu bar at all times 
 
 ## Scope
 
-**Includes:** today's cost rendered as `$X.XX` beside the tray icon (macOS), auto-updated every 60s, cleared when there's no data or an error.
+**Includes:** today's cost rendered as `$X.XX` beside the tray icon (macOS), auto-updated on the refresh interval (default 15 min; configurable, manual + "Refresh Now"), cleared when there's no data or an error.
 **Excludes:** token count in the title (that's in the [usage menu](./usage-menu.md)); any non-macOS title.
 
 ## UX Flow
@@ -23,7 +23,7 @@ ccusage failed → title cleared to `""`. — [tray.ts:73-76](../../src/tray.ts#
 ## Acceptance Criteria
 
 - [ ] On macOS, the menu bar shows today's cost within one refresh of launch. — [tray.ts:39](../../src/tray.ts#L39)
-- [ ] The figure updates at least every 60s without interaction. — [tray.ts:7](../../src/tray.ts#L7), [tray.ts:42-44](../../src/tray.ts#L42-L44)
+- [ ] The figure updates on the configured interval (default 15 min) without interaction, or immediately via "Refresh Now". — [capture-service.ts](../../src/capture-service.ts), [features/usage-refresh.md](./usage-refresh.md)
 - [ ] When there is no usage today or an error, the title is blank (icon only). — [tray.ts:73-76](../../src/tray.ts#L73-L76)
 - [ ] No title is set on non-macOS platforms. — [tray.ts:68](../../src/tray.ts#L68)
 
@@ -38,7 +38,7 @@ stateDiagram-v2
     [*] --> Loading
     Loading --> ShowingCost: daily present
     Loading --> Blank: no daily / error
-    ShowingCost --> ShowingCost: refresh (60s)
+    ShowingCost --> ShowingCost: refresh (interval / manual)
     ShowingCost --> Blank: data gone / error
     Blank --> ShowingCost: data returns
 ```
@@ -55,4 +55,4 @@ stateDiagram-v2
 
 - The title string has an intentional **leading space** before `$`. — [tray.ts#updateTitle](../../src/tray.ts)
 - Title is darwin-only; don't rely on it cross-platform.
-- The tray is now **display-only** — the 60s refresh and ccusage call moved to the [CaptureService](../modules/capture-service.md). — [modules/tray.md](../modules/tray.md)
+- The tray is now **display-only** — the refresh timer and ccusage call moved to the [CaptureService](../modules/capture-service.md). — [modules/tray.md](../modules/tray.md)
