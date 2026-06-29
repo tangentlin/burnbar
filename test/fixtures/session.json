@@ -1,0 +1,56 @@
+{
+  "session": [
+    {
+      "agent": "claude",
+      "period": "sess-A",
+      "inputTokens": 500,
+      "outputTokens": 300,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 9200,
+      "totalTokens": 10000,
+      "totalCost": 2.0,
+      "modelsUsed": ["claude-opus-4-8"],
+      "metadata": { "lastActivity": "2026-06-28T20:00:00.000Z" },
+      "modelBreakdowns": [
+        {
+          "modelName": "claude-opus-4-8",
+          "inputTokens": 500,
+          "outputTokens": 300,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 9200,
+          "cost": 2.0
+        }
+      ]
+    },
+    {
+      "agent": "codex",
+      "period": "sess-B",
+      "inputTokens": 100,
+      "outputTokens": 100,
+      "cacheCreationTokens": 0,
+      "cacheReadTokens": 800,
+      "totalTokens": 1000,
+      "totalCost": 0.5,
+      "modelsUsed": ["gpt-5-codex"],
+      "metadata": { "lastActivity": "2026-06-28T03:30:00.000Z" },
+      "modelBreakdowns": [
+        {
+          "modelName": "gpt-5-codex",
+          "inputTokens": 100,
+          "outputTokens": 100,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 800,
+          "cost": 0.5
+        }
+      ]
+    }
+  ],
+  "totals": {
+    "inputTokens": 600,
+    "outputTokens": 400,
+    "cacheCreationTokens": 0,
+    "cacheReadTokens": 10000,
+    "totalTokens": 11000,
+    "totalCost": 2.5
+  }
+}

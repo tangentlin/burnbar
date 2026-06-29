@@ -109,5 +109,9 @@
     /* Completeness */
     // "skipDefaultLibCheck": true,                      /* Skip type checking .d.ts files that are included with TypeScript. */
     "skipLibCheck": true /* Skip type checking all .d.ts files. */
-  }
+  },
+  // The browser-context renderer is bundled by esbuild and type-checked via
+  // tsconfig.dashboard.json (it needs the DOM lib this Node16 config omits).
+  "include": ["src"],
+  "exclude": ["src/dashboard"]
 }

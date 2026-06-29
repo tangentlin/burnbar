@@ -24,7 +24,11 @@ module.exports = {
   appId: "com.tangentlin.burnbar",
   productName: "Burnbar",
   directories: { output: "release" },
-  files: ["dist/**/*", "assets/**/*", "node_modules/**/*", "package.json"],
+  // Ship the compiled app, assets, and runtime deps — but never the source maps.
+  // tsc/esbuild still emit `.map` files for local debugging; the `!**/*.map`
+  // negation keeps them out of the distributable (smaller artifact, no source
+  // structure exposed in shipped builds).
+  files: ["dist/**/*", "assets/**/*", "node_modules/**/*", "package.json", "!**/*.map"],
   mac: {
     category: "public.app-category.productivity",
     icon: "build/icons/icon.png",

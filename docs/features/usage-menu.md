@@ -25,8 +25,9 @@ ccusage failed → single disabled row "Error loading usage data" (sections skip
 - [ ] Menu shows today + all-time cost and tokens when data exists. — [tray.ts:106-150](../../src/tray.ts#L106-L150)
 - [ ] Tokens are thousands-separated via `toLocaleString()`. — [tray.ts:118](../../src/tray.ts#L118), [tray.ts:141](../../src/tray.ts#L141)
 - [ ] On error, only the error row + Quit appear. — [tray.ts:84-101](../../src/tray.ts#L84-L101)
-- [ ] Quit always present and calls `app.quit()`. — [tray.ts:96-101](../../src/tray.ts#L96-L101)
-- [ ] Menu rebuilt every refresh (no stale rows). — [tray.ts:62-64](../../src/tray.ts#L62-L64)
+- [ ] Quit always present and calls `app.quit()`. — [tray.ts#buildMenuItems](../../src/tray.ts)
+- [ ] An "Open Usage Dashboard…" item sits above Quit and opens the dashboard. — [tray.ts#buildMenuItems](../../src/tray.ts), [features/usage-dashboard.md](./usage-dashboard.md)
+- [ ] Menu rebuilt on every pushed update (no stale rows). — [tray.ts#render](../../src/tray.ts)
 
 ## Data Model (Conceptual)
 
@@ -47,10 +48,10 @@ stateDiagram-v2
 
 | Concern | File |
 |---------|------|
-| Menu assembly | [tray.ts#buildMenuItems](../../src/tray.ts#L81-L104) |
-| Today rows | [tray.ts#addDailyUsageItems](../../src/tray.ts#L106-L127) |
-| All-time rows | [tray.ts#addTotalUsageItems](../../src/tray.ts#L129-L150) |
-| Data | [usage.ts#getUserUsage](../../src/usage.ts#L29) |
+| Menu assembly | [tray.ts#buildMenuItems](../../src/tray.ts) |
+| Today rows | [tray.ts#addDailyUsageItems](../../src/tray.ts) |
+| All-time rows | [tray.ts#addTotalUsageItems](../../src/tray.ts) |
+| Data | [capture.ts#toUsageData](../../src/capture.ts#L124) pushed via [CaptureService](../../src/capture-service.ts) |
 
 ## Known Pitfalls
 

@@ -8,8 +8,10 @@ A macOS menu bar app that shows your **Claude Code token burn and cost** at a gl
 
 - 🔥 **Live in the menu bar** — today's cost is always visible, no clicking required
 - 📊 **Today + all-time** token counts and cost
-- 🌐 **Backend-agnostic** — it reads your local `~/.claude` logs via ccusage, so it works the same whether Claude Code runs on the Anthropic API, **Google Vertex AI**, or **AWS Bedrock**
-- 🔒 **Private** — only reads local files; nothing leaves your machine
+- 🗄️ **Durable archive** — captures your usage history into a local store the agent CLIs can't purge, so your record survives even after they prune their logs
+- 📈 **Usage dashboard** — an in-app Chart.js graph of cost over time, by model, and by agent (30d / 90d / all-time)
+- 🌐 **Backend-agnostic** — it reads your local agent logs via ccusage, so it works the same whether Claude Code runs on the Anthropic API, **Google Vertex AI**, or **AWS Bedrock**
+- 🔒 **Private** — only reads local files, stores numbers only, and never leaves your machine
 - ⚡ **Tiny** — a thin Electron tray app over the ccusage CLI
 
 ## Requirements
@@ -18,7 +20,7 @@ macOS **Monterey (12) or later** — Burnbar runs on Electron 42, whose Chromium
 
 ## How it works
 
-Burnbar shells out to the bundled `ccusage` CLI (`ccusage daily --json --mode calculate`), which parses Claude Code's local session logs and prices them per model. Burnbar reads the token and cost totals and renders them in the tray, refreshing on an interval. No accounts, no API keys, no network calls.
+Burnbar shells out to the bundled `ccusage` CLI (`ccusage daily --json --mode calculate -z <tz>`), which parses your local agent logs and prices them per model. It renders today's and all-time totals in the tray, and — from the same call — merges the numbers into a durable archive under the app's data dir using a "keep richest, never shrink" rule, so a later log purge can't erase history. The dashboard reads that archive. No accounts, no API keys, no network calls; numbers only, nothing leaves your machine.
 
 ## Develop
 
@@ -30,8 +32,9 @@ pnpm dev      # build + launch
 Other scripts:
 
 ```bash
-pnpm build       # compile TypeScript -> dist/
+pnpm build       # tsc + esbuild renderer bundle -> dist/
 pnpm start       # launch the built app
+pnpm test        # Vitest unit tests (merge/normalize/derive/atomic IO)
 pnpm check       # oxlint + oxfmt format check
 pnpm check:fix   # oxlint --fix + oxfmt write
 ```
@@ -69,11 +72,17 @@ When signing vars are present the app is signed; when the notary vars are presen
 
 ```text
 src/
-├── main.ts     # Electron entry point
-├── tray.ts     # menu bar item + menu rendering
-├── usage.ts    # spawns the ccusage CLI, parses totals
-└── types.ts    # shared types
+├── main.ts            # Electron entry point + wiring
+├── capture-service.ts # one ccusage call → tray + archive
+├── capture.ts         # spawns the ccusage CLI, normalizes reports
+├── store.ts           # durable archive: keep-richest merge + atomic IO
+├── derive.ts          # archive → dashboard series (pure)
+├── tray.ts            # menu bar item + menu rendering (display-only)
+├── window.ts + ipc.ts + preload.mts + dashboard/  # Chart.js dashboard
+└── types.ts           # shared types
 ```
+
+Deep-dive docs for agents and contributors live in [docs/](docs/) — start at [docs/AGENTS.md](docs/AGENTS.md).
 
 ## Disclaimer
 

@@ -2,59 +2,60 @@
 
 ## Purpose
 
-Owns the entire menu-bar presence: the icon, the live cost title, the context menu, and the 60-second refresh loop.
+Owns the menu-bar presence — the template icon, the live cost title, and the context menu (today + all-time usage, "Open Usage Dashboard…", Quit). **Display-only**: it renders the `UsageData` the [CaptureService](./capture-service.md) pushes; it no longer fetches data or runs a timer.
 
 ## Public Surface
 
 | Export | Type | File |
 |--------|------|------|
-| `TrayManager` | class | [tray.ts:9](../../src/tray.ts#L9) |
-
-`TrayManager` public methods: `initializeTray()`, `refreshTrayMenu()`, `dispose()`. — [tray.ts:13-65](../../src/tray.ts#L13-L65)
+| `TrayCallbacks` | `{ onOpenDashboard }` | [tray.ts:8](../../src/tray.ts#L8) |
+| `TrayManager` | class (`initialize`, `render`, `dispose`) | [tray.ts:17](../../src/tray.ts#L17) |
 
 ## Responsibilities
 
-- Create the tray from a template icon resolved relative to the module. — [tray.ts:13-31](../../src/tray.ts#L13-L31)
-- Set the menu-bar title to today's cost (macOS only). — [tray.ts:67-79](../../src/tray.ts#L67-L79)
-- Build the context menu: Today's Usage, All-Time Usage, Quit. — [tray.ts:81-104](../../src/tray.ts#L81-L104)
-- Refresh on a 60s interval and on demand. — [tray.ts:42-44](../../src/tray.ts#L42-L44), [tray.ts:54-65](../../src/tray.ts#L54-L65)
-- Clean up the timer on dispose. — [tray.ts:47-52](../../src/tray.ts#L47-L52)
+- Create the tray from a template icon resolved relative to the module. — [tray.ts:23-49](../../src/tray.ts#L23-L49)
+- Render pushed `UsageData`: set the title to today's cost (macOS) and rebuild the context menu. — [tray.ts#render](../../src/tray.ts#L51)
+- Offer "Open Usage Dashboard…", invoking the injected `onOpenDashboard` callback. — [tray.ts](../../src/tray.ts)
+- Destroy the tray on dispose. — [tray.ts:60](../../src/tray.ts#L60)
 
 ## Non-Goals
 
-- No data fetching — it consumes `UsageData` from [usage](./usage.md).
-- No persistence/state beyond the live `tray` and `refreshTimer` handles.
+- **No data fetching, no refresh timer** — the `CaptureService` owns the ccusage call and pushes updates via `onUsage`. — [capture-service.md](./capture-service.md)
+- No window lifecycle — opening the dashboard is delegated to [window](./window.md) via the callback.
+- No persistence/state beyond the live `Tray` handle and the latest usage.
 
 ## How It Works
 
-`initializeTray()` resolves the icon via `fileURLToPath(import.meta.url)` (ESM `__dirname` replacement), marks it a template image, creates the `Tray`, then does an initial `refreshTrayMenu()` and starts a `setInterval`. Each refresh calls `getUserUsage()`, updates the title, and rebuilds the menu from a fresh template. — [tray.ts:13-65](../../src/tray.ts#L13-L65)
+`main` constructs the tray with an `onOpenDashboard` callback and subscribes the service's `onUsage` to `tray.render`. `initialize()` loads the template icon (`fileURLToPath(import.meta.url)` for ESM `__dirname`) and renders the initial (empty) usage; every later `render(usage)` updates the title and rebuilds the menu from a fresh template. — [tray.ts:23-58](../../src/tray.ts#L23-L58), [main.ts](../../src/main.ts)
 
 ```mermaid
 flowchart LR
-    init["initializeTray()"] --> icon["load template icon"] --> first["refreshTrayMenu()"] --> timer["setInterval 60s"]
-    timer --> refresh["refreshTrayMenu()"]
-    refresh --> u["getUserUsage()"] --> title["updateTitle()"] --> menu["buildMenuItems() → setContextMenu()"]
+    svc["CaptureService.onUsage"] --> render["render(UsageData)"]
+    render --> title["updateTitle()"]
+    render --> menu["buildMenuItems() → setContextMenu()"]
+    menu --> dash["Open Usage Dashboard… → onOpenDashboard()"]
 ```
 
 ## Key Types
 
 | Type | Purpose | File |
 |------|---------|------|
-| `UsageData` | Input rendered into title + menu | [types.ts#UsageData](../../src/types.ts#L6-L10) |
+| `UsageData` | input rendered into title + menu | [types.ts#UsageData](../../src/types.ts#L13-L19) |
+| `TrayCallbacks` | dashboard-open hook injected by `main` | [tray.ts:8-10](../../src/tray.ts#L8-L10) |
 
 ## Invariants & Failure Modes
 
-- Every method no-ops if `tray` is null (creation failed). — [tray.ts:55-57](../../src/tray.ts#L55-L57), [tray.ts:68](../../src/tray.ts#L68)
-- Title is set only on darwin; cleared on error or no-daily. — [tray.ts:67-79](../../src/tray.ts#L67-L79)
-- `REFRESH_INTERVAL_MS` is the single tunable for refresh cadence. — [tray.ts:7](../../src/tray.ts#L7)
+- Every method no-ops if `tray` is null (creation failed). — [tray.ts:52-54](../../src/tray.ts#L52-L54)
+- Title is set only on darwin; cleared on error or no-daily — unchanged from before. — [tray.ts#updateTitle](../../src/tray.ts)
+- On a ccusage error the service pushes `UsageData.error`; the menu shows the error row and the title clears. — [capture-service.md](./capture-service.md)
 
 ## Extension Points
 
-- To add a menu row, extend `addDailyUsageItems` / `addTotalUsageItems` or `buildMenuItems`. — [tray.ts:81-150](../../src/tray.ts#L81-L150)
-- To change cadence, edit `REFRESH_INTERVAL_MS`. — [tray.ts:7](../../src/tray.ts#L7)
-- The icon path assumes `assets/icon.png` sits one level up from `dist/`; keep that layout when changing packaging. — [tray.ts:14-16](../../src/tray.ts#L14-L16)
+- To add a menu row, extend `addDailyUsageItems` / `addTotalUsageItems` or `buildMenuItems`. — [tray.ts](../../src/tray.ts)
+- The icon path assumes `assets/icon.png` sits one level up from `dist/`; keep that layout when changing packaging. — [tray.ts:24](../../src/tray.ts#L24)
 
 ## Related Files
 
-- [usage.ts](../../src/usage.ts) — produces the `UsageData` rendered here.
-- [assets/icon.png](../../assets/icon.png) — the template icon (generated; see [icon-pipeline](./icon-pipeline.md)).
+- [capture-service.ts](../../src/capture-service.ts) — produces and pushes the `UsageData`.
+- [window.ts](../../src/window.ts) — opened by the dashboard menu item.
+- [assets/icon.png](../../assets/icon.png) — the template icon (see [icon-pipeline](./icon-pipeline.md)).

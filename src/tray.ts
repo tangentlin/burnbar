@@ -2,17 +2,25 @@ import { Menu, type MenuItemConstructorOptions, Tray, app, nativeImage } from "e
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { UsageData } from "./types.js";
-import { getUserUsage } from "./usage.js";
 
-const REFRESH_INTERVAL_MS = 60_000;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+export type TrayCallbacks = {
+  onOpenDashboard: () => void;
+};
+
+/**
+ * Display-only consumer of usage data. The CaptureService owns the ccusage call
+ * and pushes fresh {@link UsageData} via {@link render}; the tray just formats it
+ * into the title and context menu. See docs/modules/tray.md.
+ */
 export class TrayManager {
   private tray: Tray | null = null;
-  private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private latestUsage: UsageData = { daily: null, total: null };
 
-  async initializeTray(): Promise<void> {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
+  constructor(private readonly callbacks: TrayCallbacks) {}
+
+  initialize(): void {
     const iconPath = path.join(__dirname, "..", "assets", "icon.png");
 
     try {
@@ -36,32 +44,24 @@ export class TrayManager {
       });
     }
 
-    await this.refreshTrayMenu();
-
-    // Keep today's cost in the menu bar live without requiring a click.
-    this.refreshTimer = setInterval(() => {
-      void this.refreshTrayMenu();
-    }, REFRESH_INTERVAL_MS);
+    this.render(this.latestUsage);
   }
 
-  dispose(): void {
-    if (this.refreshTimer) {
-      clearInterval(this.refreshTimer);
-      this.refreshTimer = null;
-    }
-  }
-
-  async refreshTrayMenu(): Promise<void> {
+  /** Apply the latest usage to the title and rebuild the context menu. */
+  render(usageData: UsageData): void {
+    this.latestUsage = usageData;
     if (!this.tray) {
       return;
     }
-
-    const usageData = await getUserUsage();
     this.updateTitle(usageData);
+    this.tray.setContextMenu(Menu.buildFromTemplate(this.buildMenuItems(usageData)));
+  }
 
-    const menuItems = this.buildMenuItems(usageData);
-    const contextMenu = Menu.buildFromTemplate(menuItems);
-    this.tray.setContextMenu(contextMenu);
+  dispose(): void {
+    if (this.tray) {
+      this.tray.destroy();
+      this.tray = null;
+    }
   }
 
   private updateTitle(usageData: UsageData): void {
@@ -91,6 +91,14 @@ export class TrayManager {
       menuItems.push({ type: "separator" });
       this.addTotalUsageItems(menuItems, usageData);
     }
+
+    menuItems.push({ type: "separator" });
+    menuItems.push({
+      label: "Open Usage Dashboard…",
+      click: () => {
+        this.callbacks.onOpenDashboard();
+      },
+    });
 
     menuItems.push({ type: "separator" });
     menuItems.push({

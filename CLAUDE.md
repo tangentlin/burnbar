@@ -41,24 +41,32 @@ When you spot a code-smell next to your work:
 
 ## Project Overview
 
-Burnbar — a macOS menu bar application that visualizes Claude Code token burn and cost. It shells out to the bundled `ccusage` CLI (which reads local `~/.claude` usage logs and prices them per model) and renders today's and all-time totals in the tray. Backend-agnostic (Anthropic / Vertex AI / Bedrock). Built with TypeScript, Electron, and an ES module architecture.
+Burnbar — a macOS menu bar application that visualizes Claude Code (and other agent CLIs') token burn and cost. It shells out to the bundled `ccusage` CLI (which reads local agent logs and prices them per model) and renders today's and all-time totals in the tray. It also keeps a **durable, numbers-only usage archive** under the app's `userData` dir (so history survives the source tools purging their logs) and ships a **Chart.js dashboard** to visualize it. Backend-agnostic (Anthropic / Vertex AI / Bedrock). Built with TypeScript, Electron, and an ES module architecture.
 
 > 📚 Full LLM-oriented docs live in [docs/](docs/) — start at [docs/AGENTS.md](docs/AGENTS.md). Keep them in sync when you change behavior, types, or packaging.
 
 ## Development Requirements
 
 - Run oxlint (lint) and oxfmt (format) every time you change the code
+- Run Vitest (`pnpm test`) when you touch the pure logic (merge/normalize/derive/atomic IO)
 - Use Node16 module system with explicit `.js` extensions for local imports
 - Package.json has `"type": "module"` configured for ES module support
+- The renderer (`src/dashboard/`) is bundled by **esbuild** (not `tsc`) and type-checked via `tsconfig.dashboard.json`; the preload is `src/preload.mts` → `dist/preload.mjs`
 
 ## Commands
 
 ```bash
 # Development
-npm run dev          # Compile TypeScript and start Electron
-npm run build        # Compile TypeScript only
+npm run dev          # Build (tsc + renderer) and start Electron
+npm run build        # tsc + esbuild renderer bundle → dist/
+npm run build:renderer # esbuild-bundle src/dashboard (+ Chart.js) → dist/dashboard
 npm start            # Run Electron (requires prior build)
-npm run typecheck    # Type check without emitting files
+npm run typecheck    # Type check main + dashboard configs (no emit)
+
+# Tests
+npm run test         # Vitest run (merge/normalize/derive/atomic IO)
+npm run test:watch   # Vitest watch
+npm run test:coverage # Vitest with coverage
 
 # Code Quality
 npm run lint         # Run oxlint
@@ -76,43 +84,23 @@ npm run dist:mac:universal  # Build universal macOS app
 
 ## Architecture
 
-The application follows Electron's single-process architecture with a tray-only design:
+Single Electron **main** process, tray-first, with one on-demand dashboard window. The full module map and data-flow diagrams live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — this is the orientation:
 
-**Main Process** (`src/main.ts`):
-- Application entry point and lifecycle management
-- Initializes TrayManager when app is ready
-- Hides dock icon on macOS for menu bar-only operation
+- **`src/main.ts`** — wires the collaborators (`ArchiveStore`, `CaptureService`, `TrayManager`, `DashboardWindow`, archive IPC), hides the Dock, and runs a bounded quit-time flush.
+- **`src/capture-service.ts`** — `CaptureService` owns the single ccusage `daily` call that feeds **both** the tray and the archive every 60s (sessions on launch / day-rollover / quit). Best-effort: a failure never crashes the tray.
+- **`src/capture.ts`** — spawns ccusage through a dependency-injected runner and normalizes `daily`/`session` reports into archive records; also derives the tray `UsageData`. (Absorbed the old `usage.ts`.)
+- **`src/store.ts`** — `ArchiveStore`: the **pure** "keep richest, never shrink" merge plus atomic temp-then-rename JSON IO, monthly-sharded sessions, and the manifest. Highest-stakes module.
+- **`src/derive.ts`** — **pure** archive → `DashboardSeries` (cost over time, by model, by agent; 30d/90d/all).
+- **`src/time.ts`** — `systemTimezone` / `localDateString`; the pinned IANA tz passed to ccusage (`-z`) and recorded in the manifest.
+- **`src/tray.ts`** — **display-only** `TrayManager` (renders pushed `UsageData`, adds "Open Usage Dashboard…").
+- **`src/ipc.ts` / `src/preload.mts` / `src/window.ts` / `src/dashboard/`** — the read-only `archive:get-series` channel and the Chart.js dashboard (contextIsolation on, nodeIntegration off).
+- **`src/types.ts`** — shared contracts: tray DTOs, ccusage raw subset, archive records, dashboard series.
 
-**TrayManager** (`src/tray.ts`):
-- System tray lifecycle management with ES module compatibility
-- Menu construction and updates with formatted usage data
-- Handles platform-specific tray behavior (macOS context menu vs click events)
-- Uses `fileURLToPath(import.meta.url)` for `__dirname` replacement in ES modules
-
-**Usage Module** (`src/usage.ts`):
-- Spawns the bundled ccusage CLI (`ccusage daily --json --mode calculate`) via the current runtime, parsing its JSON output
-- Derives today from the single daily report and reads all-time grand totals (no second scan)
-- Error handling for missing/unreadable usage data with graceful fallbacks
-
-**Type Definitions** (`src/types.ts`):
-- Core data structures for usage statistics and API responses
-- TypeScript interfaces for type safety across modules
-
-**Key Functions**:
-- `getUserUsage()`: Spawns the ccusage CLI, parses its JSON, derives today + all-time totals
-- `TrayManager.initializeTray()`: Creates tray icon and sets up event handlers
-- `TrayManager.refreshTrayMenu()`: Builds context menu with formatted usage data
-
-**Data Flow**:
-1. Resolve the bundled ccusage CLI entry via `createRequire(...).resolve("ccusage/src/cli.js")`
-2. Spawn it through the current runtime (`process.execPath`) with `ELECTRON_RUN_AS_NODE=1` — no external `node`/`ccusage` needed
-3. Parse stdout JSON into the `CcusageDailyReport` subset
-4. Derive today from `daily[]` (match `period` to today's ISO date) and read `totals`; format for the tray menu
-5. Handle errors gracefully with fallback messaging (`UsageData.error`)
+**Data flow (capture):** `CaptureService` → `capture.ts` spawns ccusage (`-z <tz>`) → the daily report becomes `UsageData` (pushed to the tray) **and** is normalized + merged into the archive under keep-richest, written atomically and only when a day's numbers change. **Data flow (dashboard):** renderer → `window.burnbar.getSeries` (preload) → IPC → `store.readAll*` + `deriveSeries` → `DashboardSeries`. See the keep-richest rule in [docs/adr/007](docs/adr/007-keep-richest-merge.md) and the durable-archive rationale in [docs/adr/006](docs/adr/006-durable-usage-archive.md).
 
 ## ccusage Integration Details
 
-The app uses ccusage 20.x, which ships **as a CLI only** (no library exports), so Burnbar invokes its bundled `cli.js` and parses the JSON it prints:
+The app uses ccusage 20.x, which ships **as a CLI only** (no library exports), so Burnbar invokes its bundled `cli.js` and parses the JSON it prints. The spawn is wrapped in a dependency-injected `CcusageRunner` so capture/normalize is unit-testable without a process (`src/capture.ts`):
 
 ```typescript
 import { execFile } from "node:child_process";
@@ -125,15 +113,17 @@ const CCUSAGE_CLI = require.resolve("ccusage/src/cli.js");
 
 // Running ccusage through the current runtime's own binary (Electron in
 // production, Node in tests) via ELECTRON_RUN_AS_NODE keeps the app
-// self-contained. `--mode calculate` prices from local logs, so this is
-// backend-agnostic (Anthropic / Vertex AI / Bedrock).
+// self-contained. `--mode calculate` prices from local logs (backend-agnostic);
+// `-z <tz>` pins day buckets to the system IANA timezone.
 const { stdout } = await execFileAsync(
   process.execPath,
-  [CCUSAGE_CLI, "daily", "--json", "--mode", "calculate"],
-  { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, maxBuffer: 64 * 1024 * 1024 },
+  [CCUSAGE_CLI, "daily", "--json", "--mode", "calculate", "-z", tz],
+  { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, maxBuffer: 256 * 1024 * 1024 },
 );
-const report = JSON.parse(stdout); // { daily: [{ period, totalTokens, totalCost }], totals: {...} }
+const report = JSON.parse(stdout); // { daily: [{ period, agent, totalTokens, totalCost, modelBreakdowns, metadata }], totals }
 ```
+
+Burnbar also runs `ccusage session --json --mode calculate -z <tz>` (per-agent, per-session) to feed the by-agent dashboard view. Both top-level commands share one normalized row shape; the per-agent subcommands are **not** used (inconsistent schemas — see [docs/adr/007](docs/adr/007-keep-richest-merge.md)).
 
 > ⚠️ Launch gotcha: an _inherited_ `ELECTRON_RUN_AS_NODE` (e.g. terminals inside an Electron-based IDE) breaks Burnbar's own launch. Run with `env -u ELECTRON_RUN_AS_NODE`. See [docs/adr/002-electron-run-as-node.md](docs/adr/002-electron-run-as-node.md).
 
@@ -148,15 +138,29 @@ const report = JSON.parse(stdout); // { daily: [{ period, totalTokens, totalCost
 
 ```
 src/
-├── main.ts        # Application entry point
-├── tray.ts        # Tray management and menu creation
-├── usage.ts       # Usage data fetching via ccusage
-└── types.ts       # TypeScript type definitions
-assets/
-└── icon.png       # Tray icon
-dist/              # TypeScript output (git-ignored)
-release/           # electron-builder output (git-ignored)
+├── main.ts            # Entry point: wires collaborators + quit flush
+├── capture-service.ts # Owns the ccusage call feeding tray + archive
+├── capture.ts         # ccusage spawn (DI runner) + normalizers + toUsageData
+├── store.ts           # ArchiveStore: keep-richest merge + atomic IO + manifest
+├── derive.ts          # Pure archive → dashboard series
+├── time.ts            # systemTimezone / localDateString
+├── tray.ts            # Display-only tray (title, menu, Open Dashboard)
+├── ipc.ts             # Read-only archive:get-series handler
+├── preload.mts        # contextBridge → window.burnbar.getSeries (→ preload.mjs)
+├── window.ts          # DashboardWindow (BrowserWindow + security)
+├── types.ts           # Shared types incl. archive records + series
+└── dashboard/         # Browser-context renderer (esbuild-bundled)
+    ├── index.html
+    ├── renderer.ts    # Chart.js wiring, range/dimension toggles
+    └── dashboard.css
+test/                  # Vitest unit tests + JSON fixtures
+scripts/build-renderer.mjs  # esbuild bundle for the renderer
+assets/icon.png        # Tray icon
+dist/                  # tsc + esbuild output (git-ignored)
+release/               # electron-builder output (git-ignored)
 ```
+
+Archive data lives in `app.getPath("userData")/archive` (per-day JSON + monthly session shards + `manifest.json`) — **never** in the repo, **never** transmitted off-device.
 
 ## Release Process
 

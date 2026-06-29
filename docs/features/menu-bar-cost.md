@@ -47,11 +47,12 @@ stateDiagram-v2
 
 | Concern | File |
 |---------|------|
-| Title rendering | [tray.ts#updateTitle](../../src/tray.ts#L67-L79) |
-| Refresh loop | [tray.ts:42-44](../../src/tray.ts#L42-L44) |
-| Data | [usage.ts#getUserUsage](../../src/usage.ts#L29) |
+| Title rendering | [tray.ts#updateTitle](../../src/tray.ts) |
+| Refresh cadence (now owned by the service) | [capture-service.ts](../../src/capture-service.ts) |
+| Data | [capture.ts#toUsageData](../../src/capture.ts#L124) pushed via [CaptureService](../../src/capture-service.ts) |
 
 ## Known Pitfalls
 
-- The title string has an intentional **leading space** before `$`. — [tray.ts:78](../../src/tray.ts#L78)
+- The title string has an intentional **leading space** before `$`. — [tray.ts#updateTitle](../../src/tray.ts)
 - Title is darwin-only; don't rely on it cross-platform.
+- The tray is now **display-only** — the 60s refresh and ccusage call moved to the [CaptureService](../modules/capture-service.md). — [modules/tray.md](../modules/tray.md)

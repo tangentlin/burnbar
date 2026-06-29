@@ -6,17 +6,17 @@ Accepted
 
 ## Context
 
-Burnbar shows both today's usage and all-time totals. ccusage's `daily --json` already returns every day's entry **and** grand `totals` in one response. — [types.ts:17-27](../../src/types.ts#L17-L27)
+Burnbar shows both today's usage and all-time totals. ccusage's `daily --json` already returns every day's entry **and** grand `totals` in one response, and the same call now also feeds the durable archive. — [types.ts#CcusageDailyReport](../../src/types.ts#L63-L67), [ADR-006](./006-durable-usage-archive.md)
 
 ## Decision
 
-Make a single ccusage call per refresh. Read all-time from `report.totals`; derive today by finding the `daily[]` entry whose `period` equals the current local ISO date. — [usage.ts:31-45](../../src/usage.ts#L31-L45)
+Make a single ccusage `daily` call per refresh. Read all-time from `report.totals`; derive today by finding the `daily[]` entry whose `period` equals the current local date. — [capture.ts#toUsageData](../../src/capture.ts#L124)
 
 ## Consequences
 
 - (+) Half the spawns vs. a separate "today" query; lower latency and CPU per refresh.
-- (+) Today and all-time are always from the same snapshot (internally consistent).
-- (−) "Today" is matched on a UTC-derived date string (`toISOString().slice(0,10)`), so it can disagree with the user's local day near midnight. [inferred] — [usage.ts:34](../../src/usage.ts#L34)
+- (+) Today and all-time are always from the same snapshot (internally consistent), and that snapshot also drives the archive — no duplicate fetch.
+- (+) The earlier **UTC date-skew** pitfall is gone: "today" is now computed in the pinned IANA tz via `localDateString`, matching ccusage's `-z` buckets. — [time.ts#localDateString](../../src/time.ts#L11), [ADR-006](./006-durable-usage-archive.md)
 
 ## Alternatives Considered
 

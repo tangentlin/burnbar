@@ -20,10 +20,25 @@
 ### Usage Breakdown
 - **MUST** show, on click, today's and all-time cost and token counts.
 - **MUST** format tokens with thousands separators and cost as USD with 2 decimals.
-- **MUST** offer a Quit action.
+- **MUST** offer a "Open Usage Dashboard…" action and a Quit action.
 - **MUST** degrade to a clear error indication when usage data can't be read.
 
+### Durable Usage Archive
+- **MUST** persist usage history locally so it survives the source tools purging their logs.
+- **MUST** back fill as far as the source logs still hold on first run, then keep merging.
+- **MUST** never shrink or erase what was already recorded when a later read reports less.
+- **MUST** store **numbers only** — never conversation content or raw logs.
+- **MUST NOT** transmit archived data off the machine; it lives only under the app's data dir.
+- **MUST** be best-effort — a capture failure never disrupts the menu bar.
+
+### Usage Dashboard
+- **MUST** open an in-app graph of accumulated usage from the archive (not live ccusage).
+- **MUST** offer cost over time, plus breakdowns by model and by agent.
+- **MUST** offer 30-day / 90-day / all-time range presets.
+- **MUST** keep working — showing history — even after the source logs are purged.
+
 ### Data Source
+- **MUST** compute usage from local agent-CLI logs via ccusage (Claude Code, Codex, …).
 - **MUST** compute usage from local Claude Code logs via ccusage.
 - **MUST** work regardless of Claude Code's backend (Anthropic / Vertex AI / Bedrock).
 - **MUST NOT** make network calls or require accounts/API keys.
@@ -36,10 +51,10 @@
 
 ## Non-Functional Requirements
 
-- **Privacy**: read-only access to local files; zero telemetry/network.
-- **Footprint**: a thin Electron tray app; no windows/renderer.
+- **Privacy**: read-only access to the source logs; the archive holds numbers only and stays on-device; zero telemetry/network.
+- **Footprint**: a tray app plus one on-demand dashboard window; no background services.
 - **Platform**: macOS Monterey (12)+ (Electron 42 / Chromium baseline); Ventura (13)+ practically tested. — [README.md](../../README.md)
-- **Freshness**: visible cost no more than ~60s stale.
+- **Freshness**: visible cost no more than ~60s stale; the archive captures on the same cadence and on quit.
 
 ## Conceptual Data Model
 
@@ -47,6 +62,10 @@
 erDiagram
     USAGE ||--|| TODAY : has
     USAGE ||--|| ALL_TIME : has
+    ARCHIVE ||--o{ DAY : "per local date"
+    ARCHIVE ||--o{ SESSION : "per agent session"
+    DAY { number cost; number tokens; string[] agents }
+    SESSION { string agent; number cost; number tokens }
     TODAY { number cost; number tokens }
     ALL_TIME { number cost; number tokens }
 ```
@@ -65,6 +84,11 @@ erDiagram
 2. Read Today's Usage and All-Time Usage (cost + tokens).
 3. Quit from the same menu if desired.
 
+### Review usage history
+1. Open "Open Usage Dashboard…" from the tray menu.
+2. Read cost over time; toggle by-model / by-agent; switch 30d / 90d / All.
+3. The graph reflects the durable archive — it still shows history after the source logs are purged.
+
 ### Ship a release (maintainer)
 1. Set signing + notary env vars (or none for a local unsigned build).
 2. Run the macOS dist command.
@@ -72,7 +96,8 @@ erDiagram
 
 ## Out of Scope
 
-- Per-model / per-project breakdowns, charts, or history beyond today + all-time.
+- Budgets, alerts, or spend projections.
+- Cloud sync, export pipelines, or multi-machine archive merge.
 - Auto-update mechanism.
 - Windows / Linux builds.
 - Reconciling against official provider billing (explicitly a non-goal; figures are estimates). — [README.md](../../README.md)
