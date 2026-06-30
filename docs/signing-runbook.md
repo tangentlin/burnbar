@@ -112,9 +112,7 @@ Artifacts land in `release/`:
 
 ```
 release/
-  Burnbar-X.X.X.dmg            ← x64 (Intel)
   Burnbar-X.X.X-arm64.dmg      ← arm64 (Apple Silicon)
-  Burnbar-X.X.X-mac.zip        ← x64 ZIP
   Burnbar-X.X.X-arm64-mac.zip  ← arm64 ZIP
 ```
 

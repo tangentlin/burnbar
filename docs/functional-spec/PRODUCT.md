@@ -20,7 +20,7 @@
 ### Usage Breakdown
 - **MUST** show, on click, an at-a-glance card with today's and 30-day spend and token counts, a recent spend-over-time chart, and the top model by cost.
 - **MUST** format tokens compactly and cost as USD; the card is a display-only banner (not selectable).
-- **MUST** offer an "Open Usage Dashboard…" action directly beneath the card, an "About Burnbar" link to the project page, and a Quit action; the Dashboard and Refresh actions carry icons.
+- **MUST** offer an "Open Usage Dashboard…" action directly beneath the card, an "About Burnbar" link (labeled with the app version) to the project page, and a Quit action; the Dashboard and Refresh actions carry icons.
 - **MUST** degrade to a plain-text today's-usage row when the card can't be rendered, and to a clear error indication when usage data can't be read.
 
 ### Durable Usage Archive
@@ -45,7 +45,7 @@
 - **MUST** be self-contained — no external `node` or `ccusage` install required at runtime.
 
 ### Distribution
-- **MUST** build macOS artifacts for Intel and Apple Silicon.
+- **MUST** build macOS artifacts for Apple Silicon (arm64). Intel/x64 is unsupported: ccusage's per-arch native binary is only installed for the build host's arch, so an x64 artifact would ship without a working binary.
 - **MUST** support optional signing + notarization without source edits.
 - **MUST** still build successfully without any signing credentials (unsigned).
 

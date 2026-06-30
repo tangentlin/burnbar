@@ -52,7 +52,7 @@ bash /Users/tangent/.claude/skills/doc-gen/repo-tree.sh /Users/tangent/programmi
 | Lint + format check | `pnpm check` |
 | Auto-fix lint + format | `pnpm check:fix` |
 | Regenerate icons | `pnpm icon` |
-| Package macOS (x64+arm64) | `pnpm dist:mac` |
+| Package macOS (arm64) | `pnpm dist:mac` |
 
 ⚠️ **Launch gotcha:** if you launch from a terminal spawned inside an Electron-based IDE (VSCode, Claude Code host), `ELECTRON_RUN_AS_NODE=1` is inherited and breaks Burnbar's own launch (`electron` resolves to the npm shim → `does not provide an export named 'Menu'`). Launch with the var stripped:
 

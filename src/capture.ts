@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
+import { sep } from "node:path";
 import { promisify } from "node:util";
 import { rollupTotals } from "./store.js";
 import type {
@@ -21,7 +22,17 @@ const execFileAsync = promisify(execFile);
 // `ccusage` on PATH. `--mode calculate` prices each model from the local logs,
 // so this is backend-agnostic (Anthropic / Vertex AI / Bedrock).
 const require = createRequire(import.meta.url);
-const CCUSAGE_CLI = require.resolve("ccusage/src/cli.js");
+// ccusage's cli.js locates, chmod +x's, and exec's its platform-specific native
+// binary relative to its own file location. A path inside app.asar can be
+// require()'d / stat'd (Electron patches fs reads) but never chmod'd or exec'd —
+// both need a real on-disk file — so running cli.js from the archive crashes
+// with ENOTDIR. ccusage and its @ccusage native binary are therefore unpacked
+// beside the archive (see electron-builder.config.cjs); pointing the spawn at
+// the unpacked cli.js makes its relative resolution land on the real binary.
+// In dev the resolved path has no app.asar segment, so this replace is a no-op.
+const CCUSAGE_CLI = require
+  .resolve("ccusage/src/cli.js")
+  .replace(`app.asar${sep}`, `app.asar.unpacked${sep}`);
 
 /**
  * Dependency-injected ccusage invoker: takes CLI args, returns raw stdout. Unit
