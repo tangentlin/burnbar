@@ -52,7 +52,13 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME}"
           if gh release view "$version" > /dev/null 2>&1; then
-            # Release already exists (created via GitHub UI) — just attach artifacts.
+            # Release already exists (created via GitHub UI).
+            # Published releases are immutable — convert to draft so assets can be
+            # uploaded, then leave it as a draft for the author to review and publish.
+            is_draft="$(gh release view "$version" --json isDraft -q .isDraft)"
+            if [[ "$is_draft" == "false" ]]; then
+              gh release edit "$version" --draft
+            fi
             gh release upload "$version" release/*.dmg release/*.zip
           else
             # Release not yet created (git tag push flow) — create it now.
