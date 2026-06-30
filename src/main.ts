@@ -2,6 +2,7 @@ import { app, shell } from "electron";
 import * as path from "node:path";
 import { CaptureService } from "./capture-service.js";
 import { registerArchiveIpc } from "./ipc.js";
+import { BurnbarLogger } from "./logger.js";
 import { MenuCardRenderer } from "./menu-card-window.js";
 import { SettingsStore } from "./settings.js";
 import { ArchiveStore } from "./store.js";
@@ -17,7 +18,6 @@ let captureService: CaptureService | null = null;
 let trayManager: TrayManager | null = null;
 let dashboardWindow: DashboardWindow | null = null;
 let menuCardRenderer: MenuCardRenderer | null = null;
-let quitting = false;
 
 app.whenReady().then(async () => {
   // Hide the dock icon on macOS for menu-bar-only operation.
@@ -27,14 +27,20 @@ app.whenReady().then(async () => {
 
   const timezone = systemTimezone();
   const userData = app.getPath("userData");
+  const logger = new BurnbarLogger(userData);
   const store = new ArchiveStore(path.join(userData, "archive"));
   const settings = new SettingsStore(path.join(userData, "settings.json"));
+
   await settings.load();
+  await logger.rotateLogs();
+
+  logger.log("info", "app start", { timezone });
 
   const service = new CaptureService({
     store,
     timezone,
     refreshIntervalMinutes: settings.getRefreshIntervalMinutes(),
+    logger,
   });
   const dashboard = new DashboardWindow();
   const menuCard = new MenuCardRenderer();
@@ -46,14 +52,28 @@ app.whenReady().then(async () => {
         // Update the live timer/menu immediately, then persist; a write failure is
         // logged rather than left as an unhandled rejection.
         service.setRefreshIntervalMinutes(minutes);
-        settings.setRefreshIntervalMinutes(minutes).catch((error) => {
-          console.error("Failed to persist refresh interval:", error);
+        settings.setRefreshIntervalMinutes(minutes).catch((error: unknown) => {
+          logger.log("error", "Failed to persist refresh interval", error);
         });
       },
       onAbout: () => {
-        shell.openExternal(GITHUB_URL).catch((error) => {
-          console.error("Failed to open About link:", error);
+        shell.openExternal(GITHUB_URL).catch((error: unknown) => {
+          logger.log("error", "Failed to open About link", error);
         });
+      },
+      onOpenLogFolder: () => {
+        shell.openPath(logger.logsDir).catch((error: unknown) => {
+          logger.log("error", "Failed to open log folder", error);
+        });
+      },
+      onCopyDiagnostics: () => {
+        const destDir = app.getPath("desktop");
+        logger
+          .zipDiagnostics(destDir)
+          .then((zipPath) => shell.showItemInFolder(zipPath))
+          .catch((error: unknown) => {
+            logger.log("error", "Failed to copy diagnostics to Desktop", error);
+          });
       },
     },
     menuCard,
@@ -69,6 +89,8 @@ app.whenReady().then(async () => {
   service.onState((state) => tray.render(state));
   await service.start();
 });
+
+let quitting = false;
 
 app.on("before-quit", (event) => {
   // First pass: defer the quit once, flush the last interval best-effort, then

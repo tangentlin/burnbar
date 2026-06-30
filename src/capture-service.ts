@@ -8,6 +8,7 @@ import {
   toUsageData,
 } from "./capture.js";
 import { deriveSeries } from "./derive.js";
+import type { BurnbarLogger } from "./logger.js";
 import { type ArchiveStore, dailyContentEqual } from "./store.js";
 import { localDateString, systemTimezone } from "./time.js";
 import type { CcusageRunner } from "./capture.js";
@@ -24,6 +25,7 @@ export type CaptureServiceOptions = {
   refreshIntervalMinutes?: number; // 0 = manual (never auto-refresh)
   // Injectable clock keeps capture stamps and day-rollover detection testable.
   now?: () => Date;
+  logger?: BurnbarLogger;
 };
 
 /**
@@ -40,6 +42,7 @@ export class CaptureService {
   private readonly runner: CcusageRunner;
   private readonly timezone: string;
   private readonly now: () => Date;
+  private readonly logger: BurnbarLogger | undefined;
 
   private refreshIntervalMinutes: number;
   private stateListener: ((state: TrayState) => void) | null = null;
@@ -57,6 +60,7 @@ export class CaptureService {
     this.runner = options.runner ?? defaultCcusageRunner;
     this.timezone = options.timezone ?? systemTimezone();
     this.now = options.now ?? (() => new Date());
+    this.logger = options.logger;
     this.refreshIntervalMinutes = normalizeMinutes(
       options.refreshIntervalMinutes ?? DEFAULT_REFRESH_INTERVAL_MINUTES,
     );
@@ -88,8 +92,9 @@ export class CaptureService {
     // Refuse to write into an archive a newer Burnbar wrote; the tray still works.
     this.archiveWritable = await this.store.isSchemaCompatible();
     if (!this.archiveWritable) {
-      console.warn(
-        "Burnbar archive schema is newer than this build understands; archive writes are disabled this session.",
+      this.logger?.log(
+        "warn",
+        "archive schema is newer than this build; writes disabled this session",
       );
     }
     await this.captureDaily();
@@ -169,7 +174,7 @@ export class CaptureService {
       }
       this.card = await this.computeCard(today);
     } catch (error) {
-      console.error("archive write/derive failed (display unaffected):", error);
+      this.logger?.log("error", "archive write/derive failed (display unaffected)", error);
     }
 
     this.pushState();
@@ -189,7 +194,7 @@ export class CaptureService {
       }
     } catch (error) {
       // Sessions feed only the by-agent view; a failure stays silent beyond the log.
-      console.error("ccusage session capture failed:", error);
+      this.logger?.log("error", "ccusage session capture failed", error);
     }
   }
 
@@ -222,7 +227,7 @@ export class CaptureService {
   }
 
   private reportDailyFailure(error: unknown): void {
-    console.error("ccusage daily capture failed:", error);
+    this.logger?.log("error", "ccusage daily capture failed", error);
     // Preserve the prior menu behavior: a failed fetch surfaces as an error row
     // and a cleared title. `lastUpdatedAt`/`card` keep their last-good values.
     this.latestUsage = {

@@ -24,6 +24,8 @@ export type TrayCallbacks = {
   onRefreshNow: () => void;
   onSetRefreshInterval: (minutes: number) => void;
   onAbout: () => void;
+  onOpenLogFolder: () => void;
+  onCopyDiagnostics: () => void;
 };
 
 /**
@@ -195,6 +197,11 @@ export class TrayManager {
 
     items.push({ type: "separator" });
     items.push({ label: "About Burnbar", click: () => this.callbacks.onAbout() });
+    items.push({ label: "Open Log Folder", click: () => this.callbacks.onOpenLogFolder() });
+    items.push({
+      label: "Copy Diagnostics to Desktop",
+      click: () => this.callbacks.onCopyDiagnostics(),
+    });
 
     items.push({ type: "separator" });
     items.push({ label: "Quit", click: () => app.quit() });

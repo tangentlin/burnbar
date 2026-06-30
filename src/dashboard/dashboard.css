@@ -132,3 +132,26 @@ body {
 .error {
   color: #ff7b9c;
 }
+
+.export-buttons {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.export-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.export-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}

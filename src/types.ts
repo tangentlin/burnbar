@@ -155,9 +155,19 @@ export type DashboardSeries = {
   totalCost: number; // sum over the visible range
 };
 
+/**
+ * Raw archive data returned for the export feature (issue #23).
+ * The renderer serializes this to JSON or CSV for download.
+ */
+export type ExportData = {
+  daily: DailyRecord[];
+  sessions: SessionRecord[];
+};
+
 /** Surface exposed to the renderer via the contextBridge preload. */
 export type BurnbarBridge = {
   getSeries: (request: SeriesRequest) => Promise<DashboardSeries>;
+  exportData: () => Promise<ExportData>;
 };
 
 // --- Settings & tray state ------------------------------------------------

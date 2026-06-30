@@ -7,7 +7,13 @@ import {
   LinearScale,
   Tooltip,
 } from "chart.js";
-import type { BurnbarBridge, DashboardSeries, SeriesDimension, SeriesRange } from "../types.js";
+import type {
+  BurnbarBridge,
+  DailyRecord,
+  DashboardSeries,
+  SeriesDimension,
+  SeriesRange,
+} from "../types.js";
 
 // Register only the Chart.js pieces this view uses so esbuild can tree-shake the
 // rest of the library out of the renderer bundle.
@@ -178,6 +184,56 @@ async function refresh(): Promise<void> {
   }
 }
 
+// --- Export helpers -------------------------------------------------------
+
+const CSV_HEADER =
+  "date,timezone,agents,totalCost,totalTokens,inputTokens,outputTokens,cacheCreationTokens,cacheReadTokens";
+
+function dailyToCsvRow(record: DailyRecord): string {
+  const agents = `"${record.agents.join(",")}"`;
+  const t = record.totals;
+  return [
+    record.date,
+    record.timezone,
+    agents,
+    t.totalCost.toFixed(6),
+    t.totalTokens,
+    t.inputTokens,
+    t.outputTokens,
+    t.cacheCreationTokens,
+    t.cacheReadTokens,
+  ].join(",");
+}
+
+function triggerDownload(content: string, filename: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function exportJson(): Promise<void> {
+  const data = await window.burnbar.exportData();
+  const json = JSON.stringify(data, null, 2);
+  const date = new Date().toISOString().slice(0, 10);
+  triggerDownload(json, `burnbar-usage-${date}.json`, "application/json");
+}
+
+async function exportCsv(): Promise<void> {
+  const data = await window.burnbar.exportData();
+  const rows = [CSV_HEADER, ...data.daily.map(dailyToCsvRow)];
+  const csv = rows.join("\n") + "\n";
+  const date = new Date().toISOString().slice(0, 10);
+  triggerDownload(csv, `burnbar-usage-${date}.csv`, "text/csv");
+}
+
+// --- Control wiring -------------------------------------------------------
+
 function wireControls(): void {
   byId("range").addEventListener("click", (event) => {
     const target = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-range]");
@@ -197,6 +253,8 @@ function wireControls(): void {
     setControlState();
     void refresh();
   });
+  byId("export-json").addEventListener("click", () => void exportJson());
+  byId("export-csv").addEventListener("click", () => void exportCsv());
 }
 
 wireControls();
