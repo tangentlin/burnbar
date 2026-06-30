@@ -196,7 +196,10 @@ export class TrayManager {
     items.push(this.buildAutoRefreshItem(state.refreshIntervalMinutes));
 
     items.push({ type: "separator" });
-    items.push({ label: "About Burnbar", click: () => this.callbacks.onAbout() });
+    items.push({
+      label: `About Burnbar ${app.getVersion()}`,
+      click: () => this.callbacks.onAbout(),
+    });
     items.push({ label: "Open Log Folder", click: () => this.callbacks.onOpenLogFolder() });
     items.push({
       label: "Copy Diagnostics to Desktop",

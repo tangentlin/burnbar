@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Turns the compiled app into distributable macOS artifacts (`.dmg` + `.zip`, x64 + arm64), with optional signing and notarization driven entirely by environment variables.
+Turns the compiled app into distributable macOS artifacts (`.dmg` + `.zip`, arm64), with optional signing and notarization driven entirely by environment variables.
 
 ## Public Surface
 
@@ -10,14 +10,14 @@ Turns the compiled app into distributable macOS artifacts (`.dmg` + `.zip`, x64 
 |----------|------|------|
 | electron-builder config | CJS module (`Configuration`) | [electron-builder.config.cjs](../../electron-builder.config.cjs) |
 | hardened-runtime entitlements | plist | [build/entitlements.mac.plist](../../build/entitlements.mac.plist) |
-| `dist` / `dist:mac` / `dist:mac:universal` | npm scripts | [package.json:31-33](../../package.json#L31-L33) |
+| `dist` / `dist:mac` | npm scripts | [package.json:35-36](../../package.json#L35-L36) |
 
 ## Responsibilities
 
 - Define app identity: `appId` `com.tangentlin.burnbar`, `productName` `Burnbar`. — [electron-builder.config.cjs:24-25](../../electron-builder.config.cjs#L24-L25)
 - Bundle `dist/` (incl. `dist/dashboard/**` and `dist/preload.mjs`), `assets/`, `node_modules/`, `package.json` into the app — **excluding `**/*.map`** so source maps never ship in the distributable. — [electron-builder.config.cjs:31](../../electron-builder.config.cjs#L31)
 - Mark the app agent-only via `LSUIElement` (no Dock). — [electron-builder.config.cjs:41](../../electron-builder.config.cjs#L41)
-- Build dmg + zip for both x64 and arm64. — [electron-builder.config.cjs:42-45](../../electron-builder.config.cjs#L42-L45)
+- Build dmg + zip for arm64 (Apple Silicon only). — [electron-builder.config.cjs:61-64](../../electron-builder.config.cjs#L61-L64)
 - Conditionally sign/notarize from env presence. — [electron-builder.config.cjs:17-40](../../electron-builder.config.cjs#L17-L40)
 
 ## Non-Goals
@@ -38,7 +38,7 @@ flowchart TD
     signed --> notar{"APPLE_ID + PASSWORD + TEAM_ID?"}
     unsigned --> notar
     notar -- yes --> stapled["notarize + staple"]
-    notar -- no --> done["dmg + zip (x64, arm64) → release/"]
+    notar -- no --> done["dmg + zip (arm64) → release/"]
     stapled --> done
 ```
 

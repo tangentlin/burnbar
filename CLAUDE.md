@@ -78,8 +78,7 @@ npm run check:fix    # Auto-fix lint + format (oxlint --fix && oxfmt)
 
 # Distribution
 npm run dist         # Build and package for current platform
-npm run dist:mac     # Build DMG and ZIP for macOS (both architectures)
-npm run dist:mac:universal  # Build universal macOS app
+npm run dist:mac     # Build DMG and ZIP for macOS (arm64 / Apple Silicon only)
 ```
 
 ## Architecture
@@ -171,7 +170,7 @@ Archive data lives in `app.getPath("userData")/archive` (per-day JSON + monthly 
 ## Release Process
 
 Releases are fully automated: push a `vX.Y.Z` tag and `.github/workflows/release.yml`
-builds, signs, notarizes, and publishes the GitHub Release with the per-arch DMGs.
+builds, signs, notarizes, and publishes the GitHub Release with the arm64 DMG.
 
 ### One-time: store secrets in the repo
 
@@ -201,7 +200,7 @@ git push origin main
 git push origin vX.Y.Z           # triggers the release workflow
 ```
 
-The workflow produces signed + notarized per-arch DMGs and ZIPs:
+The workflow produces a signed + notarized arm64 DMG and ZIP:
 
 - **Stable tags** (`vX.Y.Z`) → draft Release; review and publish manually on GitHub.
 - **Pre-release tags** (`vX.Y.Z-rc1`, etc.) → published immediately as a pre-release.
@@ -216,7 +215,6 @@ then click **Publish release**.
 > Get the hashes with:
 >
 > ```bash
-> shasum -a 256 "release/Burnbar-X.Y.Z.dmg"
 > shasum -a 256 "release/Burnbar-X.Y.Z-arm64.dmg"
 > ```
 

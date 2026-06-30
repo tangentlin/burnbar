@@ -36,10 +36,13 @@ module.exports = {
   // negation keeps them out of the distributable (smaller artifact, no source
   // structure exposed in shipped builds).
   files: ["dist/**/*", "assets/**/*", "node_modules/**/*", "package.json", "!**/*.map"],
-  // ccusage ships platform-specific native binaries that it chmod's at runtime.
-  // Files inside .asar are not real filesystem paths, so chmod fails with ENOTDIR.
-  // Unpacking these packages places them beside the .asar where chmod works.
-  asarUnpack: ["node_modules/@ccusage/**"],
+  // ccusage's cli.js chmod's and exec's a platform-specific native binary it
+  // resolves relative to its own location. Files inside .asar are not real
+  // filesystem paths, so chmod/exec fail with ENOTDIR. Unpack BOTH ccusage
+  // (so cli.js loads from disk and its relative resolution lands on the
+  // unpacked binary) and @ccusage (the native binary itself) beside the .asar.
+  // capture.ts redirects the spawn to this unpacked copy.
+  asarUnpack: ["node_modules/ccusage/**", "node_modules/@ccusage/**"],
   mac: {
     category: "public.app-category.productivity",
     icon: "build/icons/icon.png",
@@ -52,9 +55,12 @@ module.exports = {
     entitlements: entitlementsFile,
     entitlementsInherit: entitlementsFile,
     extendInfo: { LSUIElement: true },
+    // arm64-only: ccusage ships per-arch native binaries, and the release
+    // runner only installs the host arch's @ccusage package, so an x64 artifact
+    // would ship without its binary. Apple Silicon is the only supported target.
     target: [
-      { target: "dmg", arch: ["x64", "arm64"] },
-      { target: "zip", arch: ["x64", "arm64"] },
+      { target: "dmg", arch: ["arm64"] },
+      { target: "zip", arch: ["arm64"] },
     ],
   },
   dmg: {
