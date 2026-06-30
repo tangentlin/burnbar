@@ -36,7 +36,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build, sign, and notarize
-        run: pnpm build && electron-builder --mac --config electron-builder.config.cjs --publish never
+        run: pnpm dist:mac:ci
         env:
           # Signing: base64 of Developer ID .p12 + its password.
           CSC_LINK: ${{ secrets.CSC_LINK }}
