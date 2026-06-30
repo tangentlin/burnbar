@@ -170,52 +170,59 @@ Archive data lives in `app.getPath("userData")/archive` (per-day JSON + monthly 
 
 ## Release Process
 
-When creating a new release:
+Releases are fully automated: push a `vX.Y.Z` tag and `.github/workflows/release.yml`
+builds, signs, notarizes, and publishes the GitHub Release with the per-arch DMGs.
 
-1. **Update version in package.json**:
-   ```bash
-   # Edit package.json to update version number
-   ```
+### One-time: store secrets in the repo
 
-2. **Run linting and formatting**:
-   ```bash
-   npm run lint
-   npm run format
-   npm run check
-   ```
+Run these once (swap in real values; never echo decoded secrets):
 
-3. **Commit and tag the release**:
-   ```bash
-   git add package.json
-   git commit -m "chore: bump version to X.X.X"
-   git tag vX.X.X
-   ```
+```bash
+# Signing — base64 of your Developer ID Application .p12
+base64 -i developer-id-application.p12 | gh secret set CSC_LINK
+gh secret set CSC_KEY_PASSWORD   # .p12 password
 
-4. **Build the macOS releases** (requires Apple notarization credentials):
-   ```bash
-   APPLE_ID="your-apple-id@email.com" \
-   APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx" \
-   APPLE_TEAM_ID="YOUR_TEAM_ID" \
-   npm run dist:mac
-   ```
+# Notarization
+gh secret set APPLE_ID                  # your Apple ID email
+gh secret set APPLE_APP_SPECIFIC_PASSWORD  # app-specific password from appleid.apple.com
+gh secret set APPLE_TEAM_ID             # 10-character Team ID from developer.apple.com
+# GITHUB_TOKEN is provided automatically by Actions — no manual secret needed.
+```
 
-5. **Get SHA256 hashes for Homebrew** (electron-builder writes artifacts to `release/` as `Burnbar-X.X.X*`):
-   ```bash
-   shasum -a 256 "release/Burnbar-X.X.X.dmg"
-   shasum -a 256 "release/Burnbar-X.X.X-arm64.dmg"
-   ```
+### Per-release: bump, commit, tag, push
 
-6. **Push to GitHub**:
-   ```bash
-   git push origin main
-   git push origin vX.X.X
-   ```
+```bash
+# 1. Edit package.json version
+pnpm check                       # lint + format
+git add package.json
+git commit -m "chore: bump version to X.Y.Z"
+git tag vX.Y.Z
+git push origin main
+git push origin vX.Y.Z           # triggers the release workflow
+```
 
-7. **Create GitHub Release**:
-   - Go to GitHub releases page
-   - Create release from the vX.X.X tag
-   - Upload the DMG files from the release/ directory
+The workflow produces signed + notarized per-arch DMGs and ZIPs:
 
-8. **Update Homebrew Cask**:
-   - Update version and SHA256 hashes in homebrew-claude-usage-tracker repository
-   - Create and merge PR for the Homebrew formula update
+- **Stable tags** (`vX.Y.Z`) → draft Release; review and publish manually on GitHub.
+- **Pre-release tags** (`vX.Y.Z-rc1`, etc.) → published immediately as a pre-release.
+
+### After the workflow completes
+
+For stable releases, open the draft on GitHub, review the auto-generated release notes,
+then click **Publish release**.
+
+> **Homebrew cask bump** (follow-up, not automated yet): after publishing, update the
+> version and SHA256 hashes in the homebrew-claude-usage-tracker repository.
+> Get the hashes with:
+>
+> ```bash
+> shasum -a 256 "release/Burnbar-X.Y.Z.dmg"
+> shasum -a 256 "release/Burnbar-X.Y.Z-arm64.dmg"
+> ```
+
+### Verification (after downloading a CI artifact)
+
+```bash
+spctl -a -t exec -vvv /path/to/Burnbar.app   # Gatekeeper accept
+stapler validate /path/to/Burnbar.app          # notarization ticket stapled
+```

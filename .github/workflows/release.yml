@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Serialize releases to prevent double-publishing if two tags land quickly.
+# cancel-in-progress is false because a release in flight should always finish.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build, sign, notarize, publish
+    runs-on: macos-14
+    permissions:
+      contents: write # create releases + upload assets; nothing else
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        # TODO: pin to SHA (e.g. @11bd71901bbe5b1630ceea73d27597364c9af683) for
+        # supply-chain security. Use Dependabot or `gh action` to maintain pins.
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        # Reads packageManager field from package.json (pnpm@10.13.1); no version needed.
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build, sign, and notarize
+        run: pnpm dist:mac
+        env:
+          # Signing: base64 of Developer ID .p12 + its password.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # Notarization: notarytool reads these from the environment.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME}"
+          if gh release view "$version" > /dev/null 2>&1; then
+            # Release already exists (created via GitHub UI) — just attach artifacts.
+            gh release upload "$version" release/*.dmg release/*.zip
+          else
+            # Release not yet created (git tag push flow) — create it now.
+            # Pre-release tags publish immediately; stable tags start as a draft.
+            if [[ "$version" == *"-"* ]]; then
+              release_flags="--prerelease"
+            else
+              release_flags="--draft"
+            fi
+            gh release create "$version" \
+              $release_flags \
+              --generate-notes \
+              release/*.dmg \
+              release/*.zip
+          fi
