@@ -36,6 +36,10 @@ module.exports = {
   // negation keeps them out of the distributable (smaller artifact, no source
   // structure exposed in shipped builds).
   files: ["dist/**/*", "assets/**/*", "node_modules/**/*", "package.json", "!**/*.map"],
+  // ccusage ships platform-specific native binaries that it chmod's at runtime.
+  // Files inside .asar are not real filesystem paths, so chmod fails with ENOTDIR.
+  // Unpacking these packages places them beside the .asar where chmod works.
+  asarUnpack: ["node_modules/@ccusage/**"],
   mac: {
     category: "public.app-category.productivity",
     icon: "build/icons/icon.png",
