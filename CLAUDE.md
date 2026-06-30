@@ -189,13 +189,13 @@ gh secret set APPLE_TEAM_ID             # 10-character Team ID from developer.ap
 # GITHUB_TOKEN is provided automatically by Actions — no manual secret needed.
 ```
 
-### Per-release: bump, commit, tag, push
+### Per-release: tag and push
+
+The CI workflow automatically sets `package.json`'s `version` field from the git tag
+before building, so the output artifacts are named correctly (e.g. `Burnbar-0.2.0.dmg`).
+No manual version bump is needed.
 
 ```bash
-# 1. Edit package.json version
-pnpm check                       # lint + format
-git add package.json
-git commit -m "chore: bump version to X.Y.Z"
 git tag vX.Y.Z
 git push origin main
 git push origin vX.Y.Z           # triggers the release workflow

@@ -34,7 +34,7 @@ app.whenReady().then(async () => {
   await settings.load();
   await logger.rotateLogs();
 
-  logger.log("info", "app start", { timezone });
+  logger.log("info", `app start — timezone: ${timezone}`);
 
   const service = new CaptureService({
     store,

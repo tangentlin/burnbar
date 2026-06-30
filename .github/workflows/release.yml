@@ -35,6 +35,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Sync version from tag
+        # Strip the leading "v" so package.json gets "0.2.0" not "v0.2.0".
+        # electron-builder reads the version field to name output artifacts
+        # (Burnbar-0.2.0.dmg etc.), so this must run before the build step.
+        run: npm pkg set version="${GITHUB_REF_NAME#v}"
+
       - name: Build, sign, and notarize
         run: pnpm dist:mac:ci
         env:
