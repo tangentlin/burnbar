@@ -11,10 +11,11 @@ import { deriveSeries } from "./derive.js";
 import { type ArchiveStore, dailyContentEqual } from "./store.js";
 import { localDateString, systemTimezone } from "./time.js";
 import type { CcusageRunner } from "./capture.js";
-import type { DailyRecord, TrayState, UsageData } from "./types.js";
+import type { DailyRecord, MenuCard, SeriesDataset, TrayState, UsageData } from "./types.js";
 
 const DEFAULT_REFRESH_INTERVAL_MINUTES = 15;
-const SPARKLINE_DAYS = 30;
+const CARD_DAYS = 30;
+const EMPTY_CARD: MenuCard = { cost30d: 0, tokens30d: 0, topModel: null, spark: [] };
 
 export type CaptureServiceOptions = {
   store: ArchiveStore;
@@ -46,7 +47,7 @@ export class CaptureService {
   private currentDay: string;
   private latestUsage: UsageData = { daily: null, total: null };
   private lastUpdatedAt: string | null = null; // last *successful* fetch
-  private sparkline: number[] = []; // recent daily costs for the menu mini-graph
+  private card: MenuCard = EMPTY_CARD; // derived 30-day figures for the menu card
   private readonly dailyCache = new Map<string, DailyRecord>();
   private archiveWritable = true;
   private flushed = false;
@@ -146,7 +147,7 @@ export class CaptureService {
     this.latestUsage = toUsageData(report, today);
     this.lastUpdatedAt = nowDate.toISOString();
 
-    // The archive write + sparkline derivation are best-effort: a failure here
+    // The archive write + card derivation are best-effort: a failure here
     // must never erase the numbers we already fetched and displayed.
     try {
       if (this.archiveWritable) {
@@ -166,7 +167,7 @@ export class CaptureService {
           await this.touchManifest(this.lastUpdatedAt);
         }
       }
-      this.sparkline = await this.computeSparkline(today);
+      this.card = await this.computeCard(today);
     } catch (error) {
       console.error("archive write/derive failed (display unaffected):", error);
     }
@@ -192,16 +193,24 @@ export class CaptureService {
     }
   }
 
-  /** Last `SPARKLINE_DAYS` of total daily cost (zero-filled), matching the dashboard. */
-  private async computeSparkline(today: string): Promise<number[]> {
+  /**
+   * Derive the menu card's 30-day figures from the archive: total spend/tokens,
+   * the highest-cost model, and the zero-filled daily-cost bars — all on the same
+   * range the dashboard's 30d view uses, so the two stay consistent.
+   */
+  private async computeCard(today: string): Promise<MenuCard> {
     const daily = await this.store.readAllDaily();
-    const series = deriveSeries(daily, [], {
-      range: "30d",
-      dimension: "none",
-      timezone: this.timezone,
-      today,
-    });
-    return series.datasets[0]?.data.slice(-SPARKLINE_DAYS) ?? [];
+    const base = { range: "30d" as const, timezone: this.timezone, today };
+    const total = deriveSeries(daily, [], { ...base, dimension: "none" });
+    const costs = total.datasets[0]?.data ?? [];
+    const tokens = total.datasets[0]?.tokens ?? [];
+    const byModel = deriveSeries(daily, [], { ...base, dimension: "model" });
+    return {
+      cost30d: total.totalCost,
+      tokens30d: tokens.reduce((sum, value) => sum + value, 0),
+      topModel: topModelLabel(byModel.datasets),
+      spark: costs.slice(-CARD_DAYS),
+    };
   }
 
   private async touchManifest(capturedAt: string): Promise<void> {
@@ -215,7 +224,7 @@ export class CaptureService {
   private reportDailyFailure(error: unknown): void {
     console.error("ccusage daily capture failed:", error);
     // Preserve the prior menu behavior: a failed fetch surfaces as an error row
-    // and a cleared title. `lastUpdatedAt`/`sparkline` keep their last-good values.
+    // and a cleared title. `lastUpdatedAt`/`card` keep their last-good values.
     this.latestUsage = {
       daily: null,
       total: null,
@@ -228,7 +237,7 @@ export class CaptureService {
     return {
       usage: this.latestUsage,
       lastUpdatedAt: this.lastUpdatedAt,
-      sparkline: this.sparkline,
+      card: this.card,
       refreshIntervalMinutes: this.refreshIntervalMinutes,
     };
   }
@@ -260,4 +269,16 @@ function normalizeMinutes(minutes: number): number {
     return 0;
   }
   return Math.floor(minutes);
+}
+
+/** Label of the highest-cost model across the derived per-model datasets (null when none spent). */
+function topModelLabel(datasets: SeriesDataset[]): string | null {
+  let best: { label: string; cost: number } | null = null;
+  for (const dataset of datasets) {
+    const cost = dataset.data.reduce((sum, value) => sum + value, 0);
+    if (cost > 0 && (best === null || cost > best.cost)) {
+      best = { label: dataset.label, cost };
+    }
+  }
+  return best?.label ?? null;
 }

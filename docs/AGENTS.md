@@ -20,7 +20,7 @@
 | Change the archive format / merge rule | [modules/store.md](./modules/store.md) → [src/store.ts](../src/store.ts) + [adr/007](./adr/007-keep-richest-merge.md) |
 | Change a dashboard chart / view | [features/usage-dashboard.md](./features/usage-dashboard.md) → [src/derive.ts](../src/derive.ts) + [src/dashboard/](../src/dashboard/) |
 | Change the menu-bar title | [features/menu-bar-cost.md](./features/menu-bar-cost.md) → [src/tray.ts](../src/tray.ts) |
-| Change the context menu rows / sparkline / Refresh Now | [features/usage-menu.md](./features/usage-menu.md) → [src/tray.ts](../src/tray.ts), [src/sparkline.ts](../src/sparkline.ts) |
+| Change the context menu rows / stats card / Refresh Now | [features/usage-menu.md](./features/usage-menu.md) → [src/tray.ts](../src/tray.ts), [src/menu-card-window.ts](../src/menu-card-window.ts), [src/menu-card/](../src/menu-card/) |
 | Change refresh cadence / manual mode / persistence | [features/usage-refresh.md](./features/usage-refresh.md) → [src/settings.ts](../src/settings.ts) + [src/capture-service.ts](../src/capture-service.ts) |
 | Add/modify shared types | [modules/types.md](./modules/types.md) → [src/types.ts](../src/types.ts) |
 | App lifecycle / wiring / quit flush | [modules/main.md](./modules/main.md) → [src/main.ts](../src/main.ts) |
@@ -69,13 +69,14 @@ This is unrelated to the `ELECTRON_RUN_AS_NODE` that [src/capture.ts](../src/cap
 | Directory | Purpose | Conventions |
 |-----------|---------|-------------|
 | `src/` | Main-process TypeScript (ESM) | Local imports use explicit `.js` extensions (Node16). No barrel files. |
-| `src/dashboard/` | Browser-context renderer | Bundled by **esbuild** (not `tsc`); type-checked via `tsconfig.dashboard.json`. |
+| `src/dashboard/` | Browser-context renderer (Chart.js dashboard) | Bundled by **esbuild** (not `tsc`); type-checked via `tsconfig.dashboard.json`. |
+| `src/menu-card/` | Browser-context renderer (Canvas 2D stats card) | Bundled by **esbuild** (not `tsc`); type-checked via `tsconfig.dashboard.json`. Painted by the hidden [menu-card-window.ts](../src/menu-card-window.ts). |
 | `src/preload.mts` | ESM preload | `.mts` → `dist/preload.mjs` (Electron 42 ESM-preload requirement). |
 | `test/` | Vitest unit tests + JSON fixtures | Pure logic only (merge/normalize/derive/atomic IO); ccusage mocked via the injected runner. |
 | `scripts/` | Build-time Node scripts (`.mjs`) | ESM; resolve paths via `import.meta.url`. |
 | `assets/` | Icon sources + generated PNGs | SVGs are source of truth; PNGs generated, committed. |
 | `build/` | Packaging inputs | `entitlements.mac.plist`, `icons/icon.png`. |
-| `dist/` | `tsc` + esbuild output | Git-ignored. Includes `dist/dashboard/**` and `dist/preload.mjs`. |
+| `dist/` | `tsc` + esbuild output | Git-ignored. Includes `dist/dashboard/**`, `dist/menu-card/**`, and `dist/preload.mjs`. |
 | `release/` | electron-builder output | Git-ignored. |
 | `docs/` | This documentation set | — |
 
@@ -98,9 +99,9 @@ This is unrelated to the `ELECTRON_RUN_AS_NODE` that [src/capture.ts](../src/cap
 ## Change Workflows
 
 ### Add a menu row / change displayed data
-1. Edit `buildMenuItems` / `addDailyUsageItems` / `addTotalUsageItems` in [tray.ts](../src/tray.ts).
-2. If it needs a new figure, extend the `CcusageRow` subset + `toUsageData` in [capture.ts](../src/capture.ts) and the types in [types.ts](../src/types.ts).
-3. `pnpm check && pnpm typecheck`. Update [features/usage-menu.md](./features/usage-menu.md) + [modules/tray.md](./modules/tray.md).
+1. Edit `buildMenuItems` / `addFallbackUsageItems` in [tray.ts](../src/tray.ts); to change what the stats card draws, edit `computeCard` in [capture-service.ts](../src/capture-service.ts) (the derived `MenuCard`) and the canvas drawing in [src/menu-card/card.ts](../src/menu-card/card.ts).
+2. If it needs a new figure, extend the `CcusageRow` subset + `toUsageData` in [capture.ts](../src/capture.ts) and the types in [types.ts](../src/types.ts) (`MenuCard`/`MenuCardData` for card figures).
+3. `pnpm check && pnpm typecheck` (and `pnpm build:renderer` if you touched the card renderer). Update [features/usage-menu.md](./features/usage-menu.md) + [modules/tray.md](./modules/tray.md).
 
 ### Change the archive shape or merge rule
 1. Edit the pure merge in [store.ts](../src/store.ts) and the records in [types.ts](../src/types.ts).

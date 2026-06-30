@@ -5,13 +5,14 @@ import {
   Tray,
   app,
   nativeImage,
+  nativeTheme,
 } from "electron";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { MenuCardRenderer } from "./menu-card-window.js";
 import { REFRESH_PRESETS_MINUTES } from "./settings.js";
-import { sparklinePng } from "./sparkline.js";
 import { formatIntervalLabel, formatRelativeTime } from "./time.js";
-import type { TrayState, UsageData } from "./types.js";
+import type { MenuCardData, TrayState, UsageData } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -22,13 +23,15 @@ export type TrayCallbacks = {
   onOpenDashboard: () => void;
   onRefreshNow: () => void;
   onSetRefreshInterval: (minutes: number) => void;
+  onAbout: () => void;
 };
 
 /**
  * Display-only consumer of {@link TrayState}. The CaptureService owns the ccusage
- * call and pushes state via {@link render}; the tray formats it into the title,
- * the usage rows, a 30-day spend sparkline (drill-down), a last-updated stamp +
- * Refresh Now, and the Auto-Refresh submenu. See docs/modules/tray.md.
+ * call and pushes state via {@link render}; the tray formats it into the title
+ * and the context menu — a rich "stats card" bitmap (today + 30-day spend/tokens,
+ * a bar chart, top model), an "Updated …" stamp + Refresh Now, the Auto-Refresh
+ * submenu, Open Dashboard, About, and Quit. See docs/modules/tray.md.
  */
 export class TrayManager {
   private tray: Tray | null = null;
@@ -36,13 +39,28 @@ export class TrayManager {
   private state: TrayState = {
     usage: { daily: null, total: null },
     lastUpdatedAt: null,
-    sparkline: [],
+    card: { cost30d: 0, tokens30d: 0, topModel: null, spark: [] },
     refreshIntervalMinutes: 0,
   };
-  private sparklineData: number[] = [];
-  private sparklineImage: NativeImage | null = null;
+  // Cached card bitmap + the signature of the data it was rendered from, so the
+  // 60s label tick and unchanged re-captures reuse it instead of re-rendering.
+  private cardImage: NativeImage | null = null;
+  private cardSignature: string | null = null;
+  // Static menu-row glyphs, rendered once and cached.
+  private refreshIcon: NativeImage | null = null;
+  private dashboardIcon: NativeImage | null = null;
+  // Transparent gutter filler so text on icon-less rows aligns with icon'd rows.
+  private readonly spacerIcon = transparentIcon();
+  // Re-render the (transparent) card when the menu switches light/dark — its data
+  // signature now carries the appearance, so this just re-runs the cached render.
+  private readonly handleThemeChange = (): void => {
+    void this.refreshCard(this.state);
+  };
 
-  constructor(private readonly callbacks: TrayCallbacks) {}
+  constructor(
+    private readonly callbacks: TrayCallbacks,
+    private readonly cardRenderer: MenuCardRenderer,
+  ) {}
 
   initialize(): void {
     const iconPath = path.join(__dirname, "..", "assets", "icon.png");
@@ -70,13 +88,32 @@ export class TrayManager {
 
     this.rebuildMenu();
     this.labelTimer = setInterval(() => this.rebuildMenu(), LABEL_REFRESH_MS);
+    nativeTheme.on("updated", this.handleThemeChange);
+    void this.loadIcons();
   }
 
-  /** Apply the latest state, re-render the sparkline if it changed, rebuild the menu. */
+  /** Render the static menu-row icons once and cache them (best-effort). */
+  private async loadIcons(): Promise<void> {
+    const [refresh, dashboard] = await Promise.all([
+      this.cardRenderer.renderIcon("refresh"),
+      this.cardRenderer.renderIcon("dashboard"),
+    ]);
+    this.refreshIcon = refresh;
+    this.dashboardIcon = dashboard;
+    this.rebuildMenu();
+  }
+
+  /** Apply the latest state: rebuild now, then refresh the card bitmap if its data changed. */
   render(state: TrayState): void {
     this.state = state;
-    this.updateSparkline(state.sparkline);
+    if (state.usage.error) {
+      this.cardImage = null;
+      this.cardSignature = null;
+    }
     this.rebuildMenu();
+    if (!state.usage.error) {
+      void this.refreshCard(state);
+    }
   }
 
   dispose(): void {
@@ -84,25 +121,28 @@ export class TrayManager {
       clearInterval(this.labelTimer);
       this.labelTimer = null;
     }
+    nativeTheme.removeListener("updated", this.handleThemeChange);
     if (this.tray) {
       this.tray.destroy();
       this.tray = null;
     }
   }
 
-  private updateSparkline(costs: number[]): void {
-    if (sameNumbers(this.sparklineData, costs)) {
+  /** Re-render the card bitmap only when its underlying numbers changed. */
+  private async refreshCard(state: TrayState): Promise<void> {
+    const data = toCardData(state);
+    const signature = JSON.stringify(data);
+    if (signature === this.cardSignature && this.cardImage) {
       return;
     }
-    this.sparklineData = costs;
-    if (!costs.some((cost) => cost > 0)) {
-      this.sparklineImage = null;
+    this.cardSignature = signature;
+    const image = await this.cardRenderer.render(data);
+    // Drop the result if a newer state superseded this render mid-flight.
+    if (signature !== this.cardSignature) {
       return;
     }
-    const { png, scaleFactor } = sparklinePng(costs, { width: 150, height: 18, scale: 2 });
-    const image = nativeImage.createFromBuffer(png, { scaleFactor });
-    image.setTemplateImage(true);
-    this.sparklineImage = image;
+    this.cardImage = image;
+    this.rebuildMenu();
   }
 
   private rebuildMenu(): void {
@@ -126,39 +166,46 @@ export class TrayManager {
 
   private buildMenuItems(state: TrayState): MenuItemConstructorOptions[] {
     const items: MenuItemConstructorOptions[] = [];
-    const { usage } = state;
 
-    if (usage.error) {
+    // Stats card — a display-only banner (not selectable); the dashboard CTA sits
+    // directly beneath it.
+    if (state.usage.error) {
       items.push({ label: "Error loading usage data", enabled: false });
+    } else if (this.cardImage) {
+      items.push({ label: "", icon: this.cardImage, enabled: false });
     } else {
-      this.addDailyUsageItems(items, usage);
-      items.push({ type: "separator" });
-      this.addTotalUsageItems(items, usage);
+      // Brief gap before the first card render (or a render failure): plain text.
+      this.addFallbackUsageItems(items, state.usage);
     }
 
-    // 30-day spend sparkline: a quick glance that drills into the dashboard.
-    if (this.sparklineImage) {
-      items.push({ type: "separator" });
-      items.push({
-        label: "Last 30 Days · Spend",
-        icon: this.sparklineImage,
-        click: () => this.callbacks.onOpenDashboard(),
-      });
-    }
-
-    items.push({ type: "separator" });
-    items.push({ label: `Updated ${formatRelativeTime(state.lastUpdatedAt)}`, enabled: false });
-    items.push({ label: "Refresh Now", click: () => this.callbacks.onRefreshNow() });
-    items.push(this.buildAutoRefreshItem(state.refreshIntervalMinutes));
-
-    items.push({ type: "separator" });
     items.push({
       label: "Open Usage Dashboard…",
+      icon: this.dashboardIcon ?? undefined,
       click: () => this.callbacks.onOpenDashboard(),
     });
 
     items.push({ type: "separator" });
+    items.push({ label: `Updated ${formatRelativeTime(state.lastUpdatedAt)}`, enabled: false });
+    items.push({
+      label: "Refresh Now",
+      icon: this.refreshIcon ?? undefined,
+      click: () => this.callbacks.onRefreshNow(),
+    });
+    items.push(this.buildAutoRefreshItem(state.refreshIntervalMinutes));
+
+    items.push({ type: "separator" });
+    items.push({ label: "About Burnbar", click: () => this.callbacks.onAbout() });
+
+    items.push({ type: "separator" });
     items.push({ label: "Quit", click: () => app.quit() });
+
+    // Reserve a uniform icon gutter on every text row that lacks a real glyph, so
+    // all labels left-align and the Refresh/Dashboard icons stand out.
+    for (const item of items) {
+      if (item.type !== "separator" && item.label && !item.icon) {
+        item.icon = this.spacerIcon;
+      }
+    }
 
     return items;
   }
@@ -185,7 +232,7 @@ export class TrayManager {
     return { label: `Auto-Refresh: ${formatIntervalLabel(current)}`, submenu };
   }
 
-  private addDailyUsageItems(items: MenuItemConstructorOptions[], usageData: UsageData): void {
+  private addFallbackUsageItems(items: MenuItemConstructorOptions[], usageData: UsageData): void {
     items.push({ label: "Today's Usage", enabled: false });
     if (usageData.daily) {
       items.push({ label: `  Cost: $${usageData.daily.cost.toFixed(2)}`, enabled: false });
@@ -197,21 +244,24 @@ export class TrayManager {
       items.push({ label: "  No usage today", enabled: false });
     }
   }
-
-  private addTotalUsageItems(items: MenuItemConstructorOptions[], usageData: UsageData): void {
-    items.push({ label: "All-Time Usage", enabled: false });
-    if (usageData.total) {
-      items.push({ label: `  Cost: $${usageData.total.cost.toFixed(2)}`, enabled: false });
-      items.push({
-        label: `  Tokens: ${usageData.total.totalTokens.toLocaleString()}`,
-        enabled: false,
-      });
-    } else {
-      items.push({ label: "  No usage data", enabled: false });
-    }
-  }
 }
 
-function sameNumbers(a: number[], b: number[]): boolean {
-  return a.length === b.length && a.every((value, i) => value === b[i]);
+/**
+ * A fully-transparent 16×16 image used to reserve the menu's icon gutter on rows
+ * without a real glyph, so every label left-aligns and the real icons stand out.
+ */
+function transparentIcon(): NativeImage {
+  const size = 16;
+  return nativeImage.createFromBitmap(Buffer.alloc(size * size * 4), { width: size, height: size });
+}
+
+/** Combine the derived card figures with today's numbers into the renderer's input. */
+function toCardData(state: TrayState): MenuCardData {
+  return {
+    ...state.card,
+    todayCost: state.usage.daily?.cost ?? null,
+    todayTokens: state.usage.daily?.totalTokens ?? null,
+    // The card is transparent, so its value text must match the menu appearance.
+    dark: nativeTheme.shouldUseDarkColors,
+  };
 }

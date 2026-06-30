@@ -1,28 +1,39 @@
-// Bundles the dashboard renderer (browser context) separately from the
-// main-process `tsc` build: Chart.js must be bundled for the renderer to import
-// it, and the renderer needs the DOM lib that the Node16 main config omits.
-// HTML/CSS are copied alongside the bundle into dist/dashboard/.
+// Bundles the browser-context renderers separately from the main-process `tsc`
+// build: Chart.js must be bundled for the dashboard to import it, and both
+// renderers need the DOM lib that the Node16 main config omits. Each renderer's
+// HTML (and the dashboard CSS) is copied alongside its bundle into dist/.
 import { cp, mkdir } from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const srcDir = path.join(root, "src", "dashboard");
-const outDir = path.join(root, "dist", "dashboard");
+const srcRoot = path.join(root, "src");
+const distRoot = path.join(root, "dist");
 
-await mkdir(outDir, { recursive: true });
+const dashboardSrc = path.join(srcRoot, "dashboard");
+const dashboardOut = path.join(distRoot, "dashboard");
+const cardSrc = path.join(srcRoot, "menu-card");
+const cardOut = path.join(distRoot, "menu-card");
 
-await esbuild.build({
-  entryPoints: [path.join(srcDir, "renderer.ts")],
-  bundle: true,
-  format: "esm",
-  platform: "browser",
-  target: ["es2022"],
-  outfile: path.join(outDir, "renderer.js"),
-  sourcemap: true,
-  logLevel: "info",
-});
+await mkdir(dashboardOut, { recursive: true });
+await mkdir(cardOut, { recursive: true });
 
-await cp(path.join(srcDir, "index.html"), path.join(outDir, "index.html"));
-await cp(path.join(srcDir, "dashboard.css"), path.join(outDir, "dashboard.css"));
+const bundle = (entry, outfile) =>
+  esbuild.build({
+    entryPoints: [entry],
+    bundle: true,
+    format: "esm",
+    platform: "browser",
+    target: ["es2022"],
+    outfile,
+    sourcemap: true,
+    logLevel: "info",
+  });
+
+await bundle(path.join(dashboardSrc, "renderer.ts"), path.join(dashboardOut, "renderer.js"));
+await bundle(path.join(cardSrc, "card.ts"), path.join(cardOut, "card.js"));
+
+await cp(path.join(dashboardSrc, "index.html"), path.join(dashboardOut, "index.html"));
+await cp(path.join(dashboardSrc, "dashboard.css"), path.join(dashboardOut, "dashboard.css"));
+await cp(path.join(cardSrc, "index.html"), path.join(cardOut, "index.html"));

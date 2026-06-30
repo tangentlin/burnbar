@@ -2,18 +2,18 @@
 
 ## Purpose
 
-Electron main-process entry point. Builds the object graph — `ArchiveStore`, `SettingsStore`, `CaptureService`, `TrayManager`, `DashboardWindow` (plus the archive IPC) — wires the tray's actions to the service and settings, and enforces menu-bar-only behavior with a bounded quit-time flush.
+Electron main-process entry point. Builds the object graph — `ArchiveStore`, `SettingsStore`, `CaptureService`, `MenuCardRenderer`, `TrayManager`, `DashboardWindow` (plus the archive IPC) — wires the tray's actions to the service and settings, and enforces menu-bar-only behavior with a bounded quit-time flush.
 
 ## Public Surface
 
-No exports — this is the executable entry (`package.json#main` → `dist/main.js`). Module-private state: the singleton `captureService`/`trayManager`/`dashboardWindow` handles and the `quitting` latch. — [main.ts:14-17](../../src/main.ts#L14-L17)
+No exports — this is the executable entry (`package.json#main` → `dist/main.js`). Module-private state: the singleton `captureService`/`trayManager`/`dashboardWindow`/`menuCardRenderer` handles, the `GITHUB_URL` About target, and the `quitting` latch. — [main.ts:14-20](../../src/main.ts#L14-L20)
 
 ## Responsibilities
 
 - Hide the Dock on macOS for menu-bar-only operation. — [main.ts:20-23](../../src/main.ts#L20-L23)
 - Resolve the timezone and construct the `ArchiveStore` (`userData/archive`) and `SettingsStore` (`userData/settings.json`), then `await settings.load()`. — [main.ts:25-29](../../src/main.ts#L25-L29)
 - Construct the `CaptureService`, seeding `refreshIntervalMinutes` from the loaded settings. — [main.ts:31-35](../../src/main.ts#L31-L35)
-- Construct the `DashboardWindow` and `TrayManager`, wiring `TrayCallbacks`: `onOpenDashboard` → `dashboard.open()`, `onRefreshNow` → `service.refreshNow()`, `onSetRefreshInterval` → `service.setRefreshIntervalMinutes(m)` then persist via `settings.setRefreshIntervalMinutes(m)` (a write failure is logged, never an unhandled rejection). — [main.ts:36-48](../../src/main.ts#L36-L48)
+- Construct the `DashboardWindow` and `MenuCardRenderer`, then the `TrayManager` (passing the renderer), wiring `TrayCallbacks`: `onOpenDashboard` → `dashboard.open()`, `onRefreshNow` → `service.refreshNow()`, `onSetRefreshInterval` → `service.setRefreshIntervalMinutes(m)` then persist via `settings.setRefreshIntervalMinutes(m)`, and `onAbout` → `shell.openExternal(GITHUB_URL)` (each write/open failure is logged, never an unhandled rejection). — [main.ts:39-60](../../src/main.ts#L39-L60)
 - Register the read-only archive IPC, initialize the tray, subscribe it to state (`service.onState(state => tray.render(state))`), and `start()` capture. — [main.ts:54-57](../../src/main.ts#L54-L57)
 - On `before-quit`, defer once and run a bounded final flush so the last interval persists, then tear down. — [main.ts:60-81](../../src/main.ts#L60-L81)
 
@@ -33,7 +33,8 @@ On `app.whenReady()` it builds the object graph and starts capture, which immedi
 flowchart TD
     ready["app.whenReady"] --> stores["new ArchiveStore + SettingsStore (await load)"]
     stores --> svc["new CaptureService(refreshIntervalMinutes)"]
-    ready --> tray["new TrayManager(TrayCallbacks)"]
+    ready --> card["new MenuCardRenderer"]
+    card --> tray["new TrayManager(TrayCallbacks, cardRenderer)"]
     ready --> win["new DashboardWindow"]
     ready --> ipc["registerArchiveIpc(store, tz)"]
     svc -->|onState| tray
@@ -47,13 +48,13 @@ flowchart TD
 
 | Type | Purpose | File |
 |------|---------|------|
-| `TrayCallbacks` | The three tray actions main wires | [tray.ts:21-25](../../src/tray.ts#L21-L25) |
+| `TrayCallbacks` | The four tray actions main wires (Open Dashboard, Refresh Now, Set Interval, About) | [tray.ts:21-26](../../src/tray.ts#L21-L26) |
 | `TrayState` | What `onState` pushes to the tray | [types.ts#TrayState](../../src/types.ts#L175-L180) |
 | `AppSettings` | Persisted prefs seeding the service | [types.ts#AppSettings](../../src/types.ts#L166-L168) |
 
 ## Invariants & Failure Modes
 
-- Exactly one of each collaborator for the app's lifetime; the module-level handles are disposed on quit. — [main.ts:50-52](../../src/main.ts#L50-L52)
+- Exactly one of each collaborator for the app's lifetime; all module-level handles — including the `MenuCardRenderer` — are disposed on quit. — [main.ts:62-65](../../src/main.ts#L62-L65), [main.ts:76-82](../../src/main.ts#L76-L82)
 - `app.dock` is guarded before `.hide()` (undefined off-darwin). — [main.ts:21-23](../../src/main.ts#L21-L23)
 - Settings load is awaited before the service is built, so the timer starts at the persisted cadence — never the default-then-correct flicker. — [main.ts:29-34](../../src/main.ts#L29-L34)
 - The persist on `onSetRefreshInterval` is fire-and-forget with a `.catch`: the live timer/menu change is immediate and a disk failure degrades to "not remembered next launch", not a crash. — [main.ts:43-46](../../src/main.ts#L43-L46)
@@ -63,11 +64,11 @@ flowchart TD
 ## Extension Points
 
 - New persisted preferences: extend [settings](./settings.md) + `AppSettings`, then thread the value through the `CaptureService` construction here.
-- New tray actions: add a field to `TrayCallbacks` and wire it in the `TrayManager` constructor call. — [main.ts:37-48](../../src/main.ts#L37-L48)
+- New tray actions: add a field to `TrayCallbacks` and wire it in the `TrayManager` constructor call (e.g. `onAbout` opening `GITHUB_URL`). — [main.ts:41-60](../../src/main.ts#L41-L60)
 - New main-process IPC: register alongside `registerArchiveIpc`. — [main.ts:54](../../src/main.ts#L54)
 
 ## Related Files
 
-- [capture-service.ts](../../src/capture-service.ts), [settings.ts](../../src/settings.ts), [tray.ts](../../src/tray.ts), [window.ts](../../src/window.ts), [ipc.ts](../../src/ipc.ts), [store.ts](../../src/store.ts) — the wired collaborators.
-- Sibling docs: [capture-service](./capture-service.md), [settings](./settings.md), [tray](./tray.md), [window](./window.md), [ipc](./ipc.md), [store](./store.md), [types](./types.md).
+- [capture-service.ts](../../src/capture-service.ts), [settings.ts](../../src/settings.ts), [tray.ts](../../src/tray.ts), [menu-card-window.ts](../../src/menu-card-window.ts), [window.ts](../../src/window.ts), [ipc.ts](../../src/ipc.ts), [store.ts](../../src/store.ts) — the wired collaborators.
+- Sibling docs: [capture-service](./capture-service.md), [settings](./settings.md), [tray](./tray.md), [menu-card-window](./menu-card-window.md), [window](./window.md), [ipc](./ipc.md), [store](./store.md), [types](./types.md).
 - [ARCHITECTURE.md](../ARCHITECTURE.md) for the overall graph; feature: [usage-refresh.md](../features/usage-refresh.md).

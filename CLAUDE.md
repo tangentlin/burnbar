@@ -92,7 +92,8 @@ Single Electron **main** process, tray-first, with one on-demand dashboard windo
 - **`src/store.ts`** — `ArchiveStore`: the **pure** "keep richest, never shrink" merge plus atomic temp-then-rename JSON IO, monthly-sharded sessions, and the manifest. Highest-stakes module.
 - **`src/derive.ts`** — **pure** archive → `DashboardSeries` (cost over time, by model, by agent; 30d/90d/all).
 - **`src/time.ts`** — `systemTimezone` / `localDateString`; the pinned IANA tz passed to ccusage (`-z`) and recorded in the manifest.
-- **`src/tray.ts`** — **display-only** `TrayManager` (renders pushed `UsageData`, adds "Open Usage Dashboard…").
+- **`src/tray.ts`** — **display-only** `TrayManager`: renders the pushed state as a rich bitmap "stats card" (today + 30-day spend/tokens, bar chart, top model) plus Refresh / Auto-Refresh / Open Dashboard / **About Burnbar** rows.
+- **`src/menu-card-window.ts` / `src/menu-card/`** — the card renderer: `MenuCardRenderer` drives a hidden `BrowserWindow` whose canvas (`__burnbarDrawCard`) draws the card and returns a PNG the tray shows as a menu-item icon. See [docs/adr/009](docs/adr/009-menu-stats-card.md).
 - **`src/ipc.ts` / `src/preload.mts` / `src/window.ts` / `src/dashboard/`** — the read-only `archive:get-series` channel and the Chart.js dashboard (contextIsolation on, nodeIntegration off).
 - **`src/types.ts`** — shared contracts: tray DTOs, ccusage raw subset, archive records, dashboard series.
 
@@ -144,19 +145,22 @@ src/
 ├── store.ts           # ArchiveStore: keep-richest merge + atomic IO + manifest
 ├── derive.ts          # Pure archive → dashboard series (cost + tokens)
 ├── settings.ts        # Persisted preferences (refresh interval; 0 = manual)
-├── sparkline.ts       # Pure data → PNG mini-graph for the menu glance
 ├── time.ts            # tz helpers + relative-time / interval formatting
-├── tray.ts            # Display-only tray: title, menu, sparkline, Refresh, Auto-Refresh
+├── tray.ts            # Display-only tray: title, menu, stats card, Refresh, Auto-Refresh, About
+├── menu-card-window.ts # MenuCardRenderer: hidden window → canvas → card NativeImage
 ├── ipc.ts             # Read-only archive:get-series handler
 ├── preload.mts        # contextBridge → window.burnbar.getSeries (→ preload.mjs)
 ├── window.ts          # DashboardWindow (BrowserWindow + security)
 ├── types.ts           # Shared types incl. archive records + series
-└── dashboard/         # Browser-context renderer (esbuild-bundled)
+├── dashboard/         # Browser-context renderer (esbuild-bundled)
+│   ├── index.html
+│   ├── renderer.ts    # Chart.js wiring, range/dimension toggles
+│   └── dashboard.css
+└── menu-card/         # Browser-context card renderer (esbuild-bundled)
     ├── index.html
-    ├── renderer.ts    # Chart.js wiring, range/dimension toggles
-    └── dashboard.css
+    └── card.ts        # Canvas → PNG stats card (__burnbarDrawCard)
 test/                  # Vitest unit tests + JSON fixtures
-scripts/build-renderer.mjs  # esbuild bundle for the renderer
+scripts/build-renderer.mjs  # esbuild bundle for the renderers (dashboard + menu card)
 assets/icon.png        # Tray icon
 dist/                  # tsc + esbuild output (git-ignored)
 release/               # electron-builder output (git-ignored)

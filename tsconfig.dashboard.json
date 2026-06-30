@@ -1,13 +1,13 @@
 {
-  // Type-checks the browser-context renderer, which the main Node16 config
-  // excludes. esbuild does the actual transpile/bundle; this exists purely so
-  // `tsc --noEmit` covers the dashboard code (DOM + Chart.js types).
+  // Type-checks the browser-context renderers (dashboard + menu card), which the
+  // main Node16 config excludes. esbuild does the actual transpile/bundle; this
+  // exists purely so `tsc --noEmit` covers them (DOM + Chart.js types).
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
     "lib": ["es2022", "dom", "dom.iterable"],
     "types": []
   },
-  "include": ["src/dashboard"],
+  "include": ["src/dashboard", "src/menu-card"],
   "exclude": []
 }

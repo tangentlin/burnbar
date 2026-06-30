@@ -1,7 +1,8 @@
-import { app } from "electron";
+import { app, shell } from "electron";
 import * as path from "node:path";
 import { CaptureService } from "./capture-service.js";
 import { registerArchiveIpc } from "./ipc.js";
+import { MenuCardRenderer } from "./menu-card-window.js";
 import { SettingsStore } from "./settings.js";
 import { ArchiveStore } from "./store.js";
 import { systemTimezone } from "./time.js";
@@ -10,10 +11,12 @@ import { DashboardWindow } from "./window.js";
 
 // Bound the final flush so a hung ccusage can never block app shutdown.
 const QUIT_FLUSH_TIMEOUT_MS = 5_000;
+const GITHUB_URL = "https://github.com/tangentlin/burnbar";
 
 let captureService: CaptureService | null = null;
 let trayManager: TrayManager | null = null;
 let dashboardWindow: DashboardWindow | null = null;
+let menuCardRenderer: MenuCardRenderer | null = null;
 let quitting = false;
 
 app.whenReady().then(async () => {
@@ -34,22 +37,32 @@ app.whenReady().then(async () => {
     refreshIntervalMinutes: settings.getRefreshIntervalMinutes(),
   });
   const dashboard = new DashboardWindow();
-  const tray = new TrayManager({
-    onOpenDashboard: () => dashboard.open(),
-    onRefreshNow: () => void service.refreshNow(),
-    onSetRefreshInterval: (minutes) => {
-      // Update the live timer/menu immediately, then persist; a write failure is
-      // logged rather than left as an unhandled rejection.
-      service.setRefreshIntervalMinutes(minutes);
-      settings.setRefreshIntervalMinutes(minutes).catch((error) => {
-        console.error("Failed to persist refresh interval:", error);
-      });
+  const menuCard = new MenuCardRenderer();
+  const tray = new TrayManager(
+    {
+      onOpenDashboard: () => dashboard.open(),
+      onRefreshNow: () => void service.refreshNow(),
+      onSetRefreshInterval: (minutes) => {
+        // Update the live timer/menu immediately, then persist; a write failure is
+        // logged rather than left as an unhandled rejection.
+        service.setRefreshIntervalMinutes(minutes);
+        settings.setRefreshIntervalMinutes(minutes).catch((error) => {
+          console.error("Failed to persist refresh interval:", error);
+        });
+      },
+      onAbout: () => {
+        shell.openExternal(GITHUB_URL).catch((error) => {
+          console.error("Failed to open About link:", error);
+        });
+      },
     },
-  });
+    menuCard,
+  );
 
   captureService = service;
   trayManager = tray;
   dashboardWindow = dashboard;
+  menuCardRenderer = menuCard;
 
   registerArchiveIpc(store, timezone);
   tray.initialize();
@@ -64,6 +77,7 @@ app.on("before-quit", (event) => {
     captureService?.dispose();
     trayManager?.dispose();
     dashboardWindow?.dispose();
+    menuCardRenderer?.dispose();
     return;
   }
 

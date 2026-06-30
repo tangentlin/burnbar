@@ -18,10 +18,10 @@
 - **MUST** show nothing (icon only) when there is no usage today or data can't be read.
 
 ### Usage Breakdown
-- **MUST** show, on click, today's and all-time cost and token counts.
-- **MUST** format tokens with thousands separators and cost as USD with 2 decimals.
-- **MUST** offer a "Open Usage Dashboard…" action and a Quit action.
-- **MUST** degrade to a clear error indication when usage data can't be read.
+- **MUST** show, on click, an at-a-glance card with today's and 30-day spend and token counts, a recent spend-over-time chart, and the top model by cost.
+- **MUST** format tokens compactly and cost as USD; the card is a display-only banner (not selectable).
+- **MUST** offer an "Open Usage Dashboard…" action directly beneath the card, an "About Burnbar" link to the project page, and a Quit action; the Dashboard and Refresh actions carry icons.
+- **MUST** degrade to a plain-text today's-usage row when the card can't be rendered, and to a clear error indication when usage data can't be read.
 
 ### Durable Usage Archive
 - **MUST** persist usage history locally so it survives the source tools purging their logs.
@@ -79,10 +79,10 @@ erDiagram
 
 **Edge cases:** no usage yet today → blank title; ccusage unreadable → blank title + error row in menu.
 
-### Check all-time totals
+### Check recent spend
 1. Click the menu-bar icon.
-2. Read Today's Usage and All-Time Usage (cost + tokens).
-3. Quit from the same menu if desired.
+2. Read the stats card — today's and 30-day cost + tokens, the spend chart, and the top model.
+3. Choose "Open Usage Dashboard…" (just below the card) for all-time totals and breakdowns, or Quit from the same menu.
 
 ### Review usage history
 1. Open "Open Usage Dashboard…" from the tray menu.

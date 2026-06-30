@@ -168,13 +168,35 @@ export type AppSettings = {
 };
 
 /**
+ * Derived 30-day figures the menu card renders alongside today's numbers. The
+ * CaptureService computes these from the archive on each capture; the tray turns
+ * them into the bitmap "stats card" (see menu-card-window / src/menu-card).
+ */
+export type MenuCard = {
+  cost30d: number; // summed spend over the last 30 days
+  tokens30d: number; // summed tokens over the last 30 days
+  topModel: string | null; // highest-cost model over the range, null when empty
+  spark: number[]; // 30-day daily costs, ascending (the card's bar chart)
+};
+
+/**
+ * Full input the browser-context card renderer draws: the derived {@link MenuCard}
+ * plus today's figures lifted from {@link UsageData} (null when there's no row yet).
+ */
+export type MenuCardData = MenuCard & {
+  todayCost: number | null;
+  todayTokens: number | null;
+  dark: boolean; // menu appearance — picks the value-text color (transparent card)
+};
+
+/**
  * Everything the tray renders, pushed by the CaptureService on each capture and
  * on settings/refresh actions. Carries the display numbers plus the menu's
- * "last updated" stamp, the 30-day spend sparkline, and the active interval.
+ * "last updated" stamp, the derived 30-day card figures, and the active interval.
  */
 export type TrayState = {
   usage: UsageData;
   lastUpdatedAt: string | null; // ISO of the last *successful* capture
-  sparkline: number[]; // recent daily costs for the menu mini-graph (ascending)
+  card: MenuCard; // derived 30-day figures for the menu stats card
   refreshIntervalMinutes: number;
 };
