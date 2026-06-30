@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self';" />
+    <title>Burnbar menu card</title>
+  </head>
+  <body>
+    <!-- Headless renderer: the main process calls window.__burnbarDrawCard(data)
+         to paint an off-DOM canvas and read back a PNG. Nothing is displayed. -->
+    <script type="module" src="card.js"></script>
+  </body>
+</html>

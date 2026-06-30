@@ -22,9 +22,11 @@
 | **Dirty check** | Write a record only when its numbers change, so a refresh tick is a no-op on quiet days. | [store.ts#mergeDaily](../src/store.ts#L297) |
 | **Series** | A chart-ready `DashboardSeries` derived from the archive for a `(range, dimension)`; each dataset carries parallel `data` (cost) and `tokens`. | [types.ts#DashboardSeries](../src/types.ts#L149-L156) |
 | **Refresh interval** | Minutes between auto-captures; persisted in `settings.json`. **0 = manual** (no auto-refresh). Default 15. | [types.ts#AppSettings](../src/types.ts), [settings.ts](../src/settings.ts) |
-| **Tray state** | Everything the menu renders — usage, last-updated stamp, 30-day spend sparkline, active interval — pushed by the CaptureService. | [types.ts#TrayState](../src/types.ts) |
-| **Sparkline** | A pure-rendered PNG mini-graph of recent daily spend, shown as a template image in the menu. | [sparkline.ts](../src/sparkline.ts) |
-| **Template image** | A monochrome tray icon macOS auto-tints for light/dark menu bars. | [tray.ts:27-29](../src/tray.ts#L27-L29) |
+| **Tray state** | Everything the menu renders — usage, last-updated stamp, the derived 30-day `MenuCard`, active interval — pushed by the CaptureService. | [types.ts#TrayState](../src/types.ts#L196-L201) |
+| **MenuCard** | The derived 30-day figures behind the menu stats card: `cost30d`, `tokens30d`, `topModel`, and `spark` (30-day daily costs, the card's bar chart). Computed from the archive each capture. | [types.ts#MenuCard](../src/types.ts#L175-L180), [capture-service.ts#computeCard](../src/capture-service.ts#L201) |
+| **MenuCardData** | A `MenuCard` plus today's `todayCost`/`todayTokens` and the menu appearance (`dark`) — the full input the browser-context card renderer draws. | [types.ts#MenuCardData](../src/types.ts#L186-L190) |
+| **Stats card** | The rich bitmap the menu shows in place of plain text rows: a 2×2 today/30-day stat grid, a warm bar chart, "Top model", and a footnote, on a transparent background. Rasterized off-screen by `MenuCardRenderer`; display-only (the "Open Usage Dashboard…" row beneath it is the drill-down). | [menu-card-window.ts](../src/menu-card-window.ts), [src/menu-card/card.ts](../src/menu-card/card.ts), [ADR-009](./adr/009-menu-stats-card.md) |
+| **Template image** | A monochrome image macOS auto-tints for light/dark menus — the tray icon and the two menu-row glyphs (Refresh ↻, Dashboard bar-chart). The stats card is a full-color bitmap, *not* a template. | [tray.ts:57-60](../src/tray.ts#L57-L60), [menu-card-window.ts#renderIcon](../src/menu-card-window.ts) |
 | **ELECTRON_RUN_AS_NODE** | Env var that makes the Electron binary behave as plain Node — used to run ccusage through Burnbar's own runtime. | [capture.ts:33-41](../src/capture.ts#L33-L41) |
 | **Calculate mode** | ccusage `--mode calculate` — prices from local logs. Makes Burnbar backend-agnostic. | [capture.ts:52-58](../src/capture.ts#L52-L58) |
 | **Pinned timezone** | The system IANA tz, passed to ccusage via `-z` and recorded in the manifest, so day buckets are stable. | [time.ts](../src/time.ts), [capture-service.ts](../src/capture-service.ts) |
@@ -45,9 +47,12 @@ erDiagram
     USAGE_DATA ||--o| USAGE_STATS : "daily (nullable)"
     USAGE_DATA ||--o| USAGE_STATS : "total (nullable)"
     DASHBOARD_SERIES ||--o{ SERIES_DATASET : datasets
+    TRAY_STATE ||--|| USAGE_DATA : usage
+    TRAY_STATE ||--|| MENU_CARD : card
+    MENU_CARD_DATA ||--|| MENU_CARD : extends
 ```
 
-Two mappers bridge the halves, both in [capture.ts](../src/capture.ts): `toUsageData` produces the tray `UsageData`; `normalizeDailyReport` / `normalizeSessionReport` produce archive records. The archive→chart mapper is [`deriveSeries`](../src/derive.ts#L108). Field shapes live in [types.ts](../src/types.ts) — not re-transcribed here.
+Two mappers bridge the halves, both in [capture.ts](../src/capture.ts): `toUsageData` produces the tray `UsageData`; `normalizeDailyReport` / `normalizeSessionReport` produce archive records. The archive→chart mapper is [`deriveSeries`](../src/derive.ts#L108); the CaptureService reuses it in [`computeCard`](../src/capture-service.ts#L201) to derive the tray's `MenuCard`. Field shapes live in [types.ts](../src/types.ts) — not re-transcribed here.
 
 ## Invariants
 

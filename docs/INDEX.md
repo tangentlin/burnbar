@@ -20,12 +20,13 @@
 | [store](./modules/store.md) | `ArchiveStore` — keep-richest merge, atomic IO, manifest |
 | [derive](./modules/derive.md) | `deriveSeries` — archive → chart series (cost + tokens, pure) |
 | [settings](./modules/settings.md) | `SettingsStore` — persisted refresh interval |
-| [sparkline](./modules/sparkline.md) | pure data → PNG mini-graph for the menu |
 | [time](./modules/time.md) | tz helpers + relative-time / interval formatting |
 | [ipc](./modules/ipc.md) | `registerArchiveIpc` — read-only `archive:get-series` |
 | [preload](./modules/preload.md) | contextBridge → `window.burnbar.getSeries` |
 | [window](./modules/window.md) | `DashboardWindow` — lazy BrowserWindow + security |
 | [dashboard](./modules/dashboard.md) | Chart.js renderer (esbuild bundle) |
+| [menu-card-window](./modules/menu-card-window.md) | `MenuCardRenderer` — hidden window rasterizing the tray stats card |
+| [menu-card](./modules/menu-card.md) | Canvas 2D card renderer (esbuild bundle) |
 | [types](./modules/types.md) | Shared contracts: usage, ccusage raw, archive records, series |
 | [icon-pipeline](./modules/icon-pipeline.md) | SVG → PNG icon generation (`pnpm icon`) |
 | [packaging](./modules/packaging.md) | electron-builder config, signing, notarization, entitlements |
@@ -35,7 +36,7 @@
 | Feature | Description |
 |---------|-------------|
 | [menu-bar-cost](./features/menu-bar-cost.md) | Live today's-cost title in the menu bar |
-| [usage-menu](./features/usage-menu.md) | Context menu: today + all-time, Open Dashboard, Quit |
+| [usage-menu](./features/usage-menu.md) | Context menu: stats card, Open Dashboard, About, Quit |
 | [usage-archive](./features/usage-archive.md) | Durable, numbers-only capture that survives source-log purges |
 | [usage-dashboard](./features/usage-dashboard.md) | Chart.js window: cost over time, by model, by agent |
 | [usage-refresh](./features/usage-refresh.md) | Configurable cadence (15 min default), manual mode, Refresh Now |
@@ -53,3 +54,4 @@
 | [006](./adr/006-durable-usage-archive.md) | A durable, numbers-only usage archive in `userData` |
 | [007](./adr/007-keep-richest-merge.md) | "Keep richest, never shrink" merge (anti-purge) |
 | [008](./adr/008-dashboard-window-bundle.md) | Dashboard: ESM preload, sandbox, separate renderer bundle |
+| [009](./adr/009-menu-stats-card.md) | Menu stats card via a hidden-window canvas, replacing the template sparkline |

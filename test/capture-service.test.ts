@@ -35,7 +35,7 @@ const callCount = (runner: ReturnType<typeof fixtureRunner>, kind: string) =>
   runner.mock.calls.filter(([args]) => args[0] === kind).length;
 
 describe("CaptureService.start — first-run backfill", () => {
-  it("seeds the archive and pushes tray state (usage, lastUpdatedAt, sparkline, interval)", async () => {
+  it("seeds the archive and pushes tray state (usage, lastUpdatedAt, card, interval)", async () => {
     const store = new ArchiveStore(dir);
     const runner = fixtureRunner();
     let state: TrayState | undefined;
@@ -60,9 +60,12 @@ describe("CaptureService.start — first-run backfill", () => {
     expect(state?.usage.total?.totalTokens).toBe(20000);
     expect(state?.lastUpdatedAt).toBe("2026-06-28T12:00:00.000Z");
     expect(state?.refreshIntervalMinutes).toBe(0);
-    expect(state?.sparkline).toHaveLength(30);
-    expect(state?.sparkline.at(-1)).toBe(3.25); // today's total spend
-    expect(state?.sparkline.reduce((a, b) => a + b, 0)).toBeCloseTo(4.75, 10);
+    expect(state?.card.spark).toHaveLength(30);
+    expect(state?.card.spark.at(-1)).toBe(3.25); // today's total spend
+    expect(state?.card.spark.reduce((a, b) => a + b, 0)).toBeCloseTo(4.75, 10);
+    expect(state?.card.cost30d).toBeCloseTo(4.75, 10);
+    expect(state?.card.tokens30d).toBe(20000);
+    expect(state?.card.topModel).toBe("claude-opus-4-8");
   });
 });
 

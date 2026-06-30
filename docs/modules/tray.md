@@ -2,87 +2,98 @@
 
 ## Purpose
 
-The menu-bar surface — a display-only consumer of `TrayState`. It owns the template icon and macOS cost title, then renders the context menu: today/all-time usage rows, a clickable 30-day spend sparkline, an "Updated …" relative-time stamp, Refresh Now, an Auto-Refresh radio submenu, Open Dashboard, and Quit. It fetches nothing; the [CaptureService](./capture-service.md) pushes state via `render`.
+The menu-bar surface — a display-only consumer of `TrayState`. It owns the template icon and macOS cost title, then renders the context menu: a rich **stats card** bitmap (today + 30-day spend/tokens, a bar chart, top model) shown as a non-selectable banner, "Open Usage Dashboard…" directly beneath it, an "Updated …" relative-time stamp, Refresh Now, an Auto-Refresh radio submenu, About Burnbar, and Quit. The Dashboard and Refresh rows carry template icons. It fetches nothing; the [CaptureService](./capture-service.md) pushes state via `render`, and the card bitmap + the row icons are rasterized by the injected [MenuCardRenderer](./menu-card-window.md).
 
 ## Public Surface
 
 | Export | Type | File |
 |--------|------|------|
-| `TrayCallbacks` | `{ onOpenDashboard, onRefreshNow, onSetRefreshInterval }` | [tray.ts:21](../../src/tray.ts#L21) |
-| `TrayManager` | class (`initialize`, `render`, `dispose`) | [tray.ts:33](../../src/tray.ts#L33) |
+| `TrayCallbacks` | `{ onOpenDashboard, onRefreshNow, onSetRefreshInterval, onAbout }` | [tray.ts:21](../../src/tray.ts#L21) |
+| `TrayManager` | class (`initialize`, `render`, `dispose`) — constructed with `(callbacks, cardRenderer)` | [tray.ts:35](../../src/tray.ts#L35) |
 
-Module-private: `sameNumbers()` (the sparkline change check) — [tray.ts:215](../../src/tray.ts#L215). All menu construction (`buildMenuItems`, `buildAutoRefreshItem`, `addDailyUsageItems`, `addTotalUsageItems`, `updateTitle`, `updateSparkline`, `rebuildMenu`) are instance-private.
+Module-private: `toCardData()` (merges the derived `MenuCard` with today's numbers into the renderer input). All menu construction (`buildMenuItems`, `buildAutoRefreshItem`, `addFallbackUsageItems`, `updateTitle`, `refreshCard`, `loadIcons`, `rebuildMenu`) is instance-private.
 
 ## Responsibilities
 
-- Create the tray from a template icon resolved relative to the module (`fileURLToPath(import.meta.url)` for ESM `__dirname`), and clear the macOS title. — [tray.ts:47-63](../../src/tray.ts#L47-L63)
-- Run a 60s UI-only timer that rebuilds the menu so "Updated X ago" stays honest between data refreshes — no ccusage call. — [tray.ts:19](../../src/tray.ts#L19), [tray.ts:72](../../src/tray.ts#L72)
-- Apply pushed `TrayState`: re-render the sparkline if changed, then rebuild the menu. — [render](../../src/tray.ts#L76)
-- Set the macOS title to today's cost (`$x.xx`); clear it on error or no daily row. — [updateTitle](../../src/tray.ts#L116)
-- Build usage rows (today + all-time cost/tokens), formatting via `toFixed(2)` / `toLocaleString()`. — [tray.ts:188-212](../../src/tray.ts#L188-L212)
-- Render a 30-day spend sparkline as a template `NativeImage`; clicking the row opens the dashboard. — [tray.ts:139-147](../../src/tray.ts#L139-L147)
-- Show the "Updated …" relative-time row + Refresh Now, and the Auto-Refresh radio submenu (presets + a disabled "Custom" radio for a non-preset value). — [tray.ts:149-185](../../src/tray.ts#L149-L185)
-- Wire menu clicks to the injected `TrayCallbacks`; Quit calls `app.quit()`. — [tray.ts:145-161](../../src/tray.ts#L145-L161)
-- Tear down the timer and destroy the tray on dispose. — [dispose](../../src/tray.ts#L82)
+- Create the tray from a template icon resolved relative to the module (`fileURLToPath(import.meta.url)` for ESM `__dirname`), and clear the macOS title. — [initialize](../../src/tray.ts#L54)
+- Run a 60s UI-only timer that rebuilds the menu so "Updated X ago" stays honest between data refreshes — no ccusage call, and it reuses the cached card image. — [tray.ts:19](../../src/tray.ts#L19), [initialize](../../src/tray.ts#L62)
+- On startup, render the two static menu-row glyphs once (Refresh ↻, Dashboard bar-chart) and cache them. — [loadIcons](../../src/tray.ts#L87)
+- Reserve a uniform icon gutter: assign a transparent spacer image to every text row lacking a real glyph so all labels left-align and the real icons stand out. — [buildMenuItems](../../src/tray.ts#L157), [transparentIcon](../../src/tray.ts)
+- Apply pushed `TrayState`: rebuild immediately, then asynchronously re-rasterize the card bitmap **only when its data changed**. — [render](../../src/tray.ts#L98), [refreshCard](../../src/tray.ts#L122)
+- Set the macOS title to today's cost (`$x.xx`); clear it on error or no daily row. — [updateTitle](../../src/tray.ts#L139)
+- Render the stats card as a **non-selectable** banner (`enabled: false`, no click), with "Open Usage Dashboard…" directly beneath it as the drill-down action. Fall back to plain "Today's Usage" text rows only when the card image is unavailable (first-render gap or a render failure). — [buildMenuItems](../../src/tray.ts#L157), [addFallbackUsageItems](../../src/tray.ts#L217)
+- Stamp the menu appearance (`nativeTheme.shouldUseDarkColors`) into the card data so the transparent card's value text stays legible, and re-render the card on `nativeTheme` "updated". — [toCardData](../../src/tray.ts#L240), [handleThemeChange](../../src/tray.ts#L54)
+- Show the "Updated …" relative-time row + Refresh Now (icon), the Auto-Refresh radio submenu (presets + a disabled "Custom" radio for a non-preset value), and **About Burnbar**. — [buildMenuItems](../../src/tray.ts#L157), [buildAutoRefreshItem](../../src/tray.ts#L189)
+- Wire menu clicks to the injected `TrayCallbacks`; Quit calls `app.quit()`. — [buildMenuItems](../../src/tray.ts#L157)
+- Tear down the timer and destroy the tray on dispose (the card window is disposed by `main`). — [dispose](../../src/tray.ts#L110)
 
 ## Non-Goals
 
 - **No data fetching, no refresh scheduling** — the [CaptureService](./capture-service.md) owns the ccusage call and the auto-refresh timer; the tray's only timer is the UI label tick.
-- No window lifecycle — opening the dashboard delegates to [window](./window.md) via `onOpenDashboard`.
+- **No card drawing** — the bitmap is produced by [menu-card-window](./menu-card-window.md) (the hidden window) + [menu-card](./menu-card.md) (the canvas); the tray only caches the resulting `NativeImage` and attaches it.
+- No window lifecycle — opening the dashboard and the About link delegate to `main` via the callbacks.
 - No settings persistence — `onSetRefreshInterval` fires back to `main`, which persists via [settings](./settings.md).
-- No sparkline pixel encoding — that's [sparkline](./sparkline.md); the tray only caches and templates the resulting image.
 - No relative-time / interval-label formatting — borrowed from [time](./time.md).
 
 ## How It Works
 
-`main` constructs the tray with the three callbacks and subscribes the service's `onState` to `tray.render`. — [main.ts:37-56](../../src/main.ts#L37-L56)
+`main` constructs the tray with the four callbacks and the `MenuCardRenderer`, then subscribes the service's `onState` to `tray.render`. — [main.ts](../../src/main.ts)
 
-`initialize()` loads the template icon, starts the 60s label timer, and builds the initial (empty) menu. Each `render(state)` stores the state, diffs the sparkline, and rebuilds. The sparkline image is cached: `updateSparkline` early-returns when `sameNumbers` says the cost array is unchanged, so the PNG is re-encoded only on real change; an all-zero range clears the image (no row). When present, the row is a clickable drill-down into the dashboard. — [tray.ts:76-106](../../src/tray.ts#L76-L106)
+`initialize()` loads the template icon, starts the 60s label timer, builds the initial (cardless) menu, and kicks off `loadIcons` (render + cache the two row glyphs once; this also warms the hidden window). Each `render(state)` stores the state and rebuilds immediately (so the title and rows are fresh), then calls `refreshCard`. `refreshCard` builds the renderer input via `toCardData`, hashes it to a JSON signature, and re-rasterizes **only** when the signature changed (so the 60s tick and unchanged re-captures reuse the cached `NativeImage`); a newer state's signature supersedes an in-flight render. The card is a **display-only** banner (`enabled: false`); the drill-down lives in the "Open Usage Dashboard…" row immediately beneath it. On a ccusage error the card is dropped and the menu collapses to a single "Error loading usage data" line.
 
-The Auto-Refresh submenu maps `REFRESH_PRESETS_MINUTES` to radio items (0 ⇒ "Manual (off)"); a current value outside the preset set is surfaced as a separate disabled, checked "Custom: …" radio so file-edited intervals stay visible. — [tray.ts:166-186](../../src/tray.ts#L166-L186)
+The Auto-Refresh submenu maps `REFRESH_PRESETS_MINUTES` to radio items (0 ⇒ "Manual (off)"); a current value outside the preset set is surfaced as a separate disabled, checked "Custom: …" radio so file-edited intervals stay visible. — [buildAutoRefreshItem](../../src/tray.ts#L189)
 
 ```mermaid
 flowchart LR
     svc["CaptureService.onState"] --> render["render(TrayState)"]
     timer["60s label timer"] --> rebuild["rebuildMenu()"]
-    render --> spark["updateSparkline() (cached)"]
+    init["initialize()"] --> icons["loadIcons() → renderIcon ×2 (cached)"]
+    icons --> rebuild
     render --> rebuild
+    render --> refresh["refreshCard() (signature-cached)"]
+    refresh --> card["MenuCardRenderer.render() → NativeImage"]
+    card --> rebuild
     rebuild --> title["updateTitle()"]
     rebuild --> menu["buildMenuItems() → setContextMenu()"]
-    menu --> cbs["TrayCallbacks: onOpenDashboard / onRefreshNow / onSetRefreshInterval"]
+    menu --> cbs["TrayCallbacks: onOpenDashboard / onRefreshNow / onSetRefreshInterval / onAbout"]
 ```
 
 ## Key Types
 
 | Type | Purpose | File |
 |------|---------|------|
-| `TrayState` | full input the tray renders (usage, lastUpdatedAt, sparkline, interval) | [types.ts#TrayState](../../src/types.ts#L175-L180) |
-| `UsageData` | today + all-time stats rendered into title + rows | [types.ts#UsageData](../../src/types.ts#L13-L17) |
-| `TrayCallbacks` | dashboard/refresh/interval hooks injected by `main` | [tray.ts:21-25](../../src/tray.ts#L21-L25) |
+| `TrayState` | full input the tray renders (usage, lastUpdatedAt, `card`, interval) | [types.ts#TrayState](../../src/types.ts) |
+| `MenuCard` / `MenuCardData` | derived 30-day figures + the renderer's combined input | [types.ts#MenuCard](../../src/types.ts) |
+| `UsageData` | today + all-time stats; drives the title + the fallback row | [types.ts#UsageData](../../src/types.ts#L13) |
+| `TrayCallbacks` | dashboard/refresh/interval/about hooks injected by `main` | [tray.ts:21](../../src/tray.ts#L21) |
 
 ## Invariants & Failure Modes
 
-- **Tray-null guard**: `rebuildMenu` and `updateTitle` no-op if `tray` is null (creation failed in `initialize`'s try/catch). — [tray.ts:50-61](../../src/tray.ts#L50-L61), [tray.ts:108-111](../../src/tray.ts#L108-L111)
-- Title is set only on darwin; cleared on `usage.error` or missing daily row. — [updateTitle](../../src/tray.ts#L116)
-- On a ccusage error the service pushes `usage.error`; the menu collapses the usage rows to a single "Error loading usage data" line (sparkline/refresh/quit still render). — [tray.ts:131-137](../../src/tray.ts#L131-L137)
-- **Sparkline cache is load-bearing for cost**: re-encoding only when `sameNumbers` reports a change keeps the 60s label tick and unchanged re-captures from rebuilding the PNG. — [tray.ts:93-106](../../src/tray.ts#L93-L106)
-- An all-zero (or empty) sparkline clears the image and omits the row entirely — no flat/empty chart. — [tray.ts:98-101](../../src/tray.ts#L98-L101)
-- Sparkline `NativeImage` is marked a template so macOS tints it to the menu foreground (light/dark aware). — [tray.ts:104](../../src/tray.ts#L104), [sparkline](./sparkline.md)
+- **Tray-null guard**: `rebuildMenu` and `updateTitle` no-op if `tray` is null (creation failed in `initialize`'s try/catch). — [initialize](../../src/tray.ts#L62), [rebuildMenu](../../src/tray.ts#L138)
+- Title is set only on darwin; cleared on `usage.error` or missing daily row. — [updateTitle](../../src/tray.ts#L139)
+- **Card is non-interactive**: it's an `enabled: false` image banner — selection/hover highlighting is suppressed, and the dashboard drill-down lives in the row beneath it. — [buildMenuItems](../../src/tray.ts#L157)
+- On a ccusage error the service pushes `usage.error`; the menu collapses the card to a single "Error loading usage data" line (Dashboard/Updated/Refresh/About/Quit still render), and the cached card image is cleared. — [render](../../src/tray.ts#L98), [buildMenuItems](../../src/tray.ts#L157)
+- **Card cache is load-bearing for the label tick**: re-rasterizing only when the JSON signature changes keeps the 60s tick and unchanged re-captures from spawning a render round-trip. — [refreshCard](../../src/tray.ts#L122)
+- **Async-render safety**: a render whose signature is no longer current is discarded, so out-of-order completions never show stale numbers. — [refreshCard](../../src/tray.ts#L122)
+- **Icons are best-effort & cached**: rendered once at startup; if `renderIcon` returns `null` the rows simply show no icon. — [loadIcons](../../src/tray.ts#L87)
+- **Graceful degradation**: if the card renderer returns `null` (or before the first render lands), the menu shows plain-text "Today's Usage" rows instead of a blank item. — [addFallbackUsageItems](../../src/tray.ts#L217)
 
 ## Extension Points
 
-- To add a menu row, extend `buildMenuItems` (or `addDailyUsageItems` / `addTotalUsageItems`). — [tray.ts:127](../../src/tray.ts#L127)
+- To add a menu row, extend `buildMenuItems`. — [buildMenuItems](../../src/tray.ts#L157)
+- To change what the card shows, edit [menu-card](./menu-card.md) (the canvas) and the `MenuCard`/`MenuCardData` contracts in [types](./types.md); feed new figures from [capture-service](./capture-service.md)'s `computeCard`.
+- To add a menu-row icon, add a glyph to `__burnbarDrawIcon` in [menu-card](./menu-card.md) and render it in `loadIcons`. — [loadIcons](../../src/tray.ts#L87)
 - New refresh presets: edit `REFRESH_PRESETS_MINUTES`; the "Custom" fallback then narrows automatically. — [settings.ts:9](../../src/settings.ts#L9)
-- Sparkline dimensions/scale are passed at the `sparklinePng` call; tune width/height/scale there. — [tray.ts:102](../../src/tray.ts#L102)
-- The icon path assumes `assets/icon.png` sits one level up from `dist/`; keep that layout when changing packaging. — [tray.ts:48](../../src/tray.ts#L48)
+- The icon path assumes `assets/icon.png` sits one level up from `dist/`; keep that layout when changing packaging. — [initialize](../../src/tray.ts#L63)
 
 ## Related Files
 
-- [capture-service.ts](../../src/capture-service.ts) — produces and pushes the `TrayState` (`onState`).
-- [main.ts](../../src/main.ts) — wires the `TrayCallbacks` to the service, window, and settings.
-- [window.ts](../../src/window.ts) — opened by the sparkline row and the dashboard menu item.
-- [sparkline.ts](../../src/sparkline.ts) / [time.ts](../../src/time.ts) — the PNG encoder and the relative-time / interval-label formatters.
+- [capture-service.ts](../../src/capture-service.ts) — produces and pushes the `TrayState` (`onState`), including the derived `MenuCard`.
+- [menu-card-window.ts](../../src/menu-card-window.ts) → [menu-card-window.md](./menu-card-window.md) — the injected `MenuCardRenderer` that rasterizes the card bitmap.
+- [menu-card/](../../src/menu-card/) → [menu-card.md](./menu-card.md) — the browser-context canvas that draws the card.
+- [main.ts](../../src/main.ts) — wires the `TrayCallbacks` (incl. `onAbout` → GitHub) and the `MenuCardRenderer` to the service, window, and settings.
+- [window.ts](../../src/window.ts) — opened by the card row and the dashboard menu item.
+- [time.ts](../../src/time.ts) — the relative-time / interval-label formatters.
 - [settings.ts](../../src/settings.ts) — `REFRESH_PRESETS_MINUTES` and interval persistence.
-- [assets/icon.png](../../assets/icon.png) — the template icon (see [icon-pipeline](./icon-pipeline.md)).
-- Sibling docs: [capture-service](./capture-service.md), [settings](./settings.md), [sparkline](./sparkline.md), [time](./time.md), [window](./window.md), [types](./types.md).
+- Sibling docs: [capture-service](./capture-service.md), [settings](./settings.md), [menu-card-window](./menu-card-window.md), [menu-card](./menu-card.md), [time](./time.md), [window](./window.md), [types](./types.md).
 - Feature: [usage-menu.md](../features/usage-menu.md), [usage-refresh.md](../features/usage-refresh.md), [usage-dashboard.md](../features/usage-dashboard.md).

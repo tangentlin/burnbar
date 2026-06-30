@@ -10,8 +10,9 @@
 | `CaptureService` | Single owner of the ccusage call feeding tray **and** archive | [capture-service.ts](../src/capture-service.ts) |
 | `ArchiveStore` | Read/merge/persist the durable archive (pure merge + atomic IO) | [store.ts](../src/store.ts) |
 | `TrayManager` | Display-only menu-bar rendering + "Open Usage Dashboard…" | [tray.ts](../src/tray.ts) |
+| `MenuCardRenderer` | Hidden window rasterizing the menu stats card to a `NativeImage` | [menu-card-window.ts](../src/menu-card-window.ts) |
 | `DashboardWindow` + `registerArchiveIpc` | Chart.js window; read-only `archive:get-series` channel | [window.ts](../src/window.ts), [ipc.ts](../src/ipc.ts) |
-| `pnpm build:renderer` | esbuild-bundle the dashboard renderer (+ Chart.js) | [scripts/build-renderer.mjs](../scripts/build-renderer.mjs) |
+| `pnpm build:renderer` | esbuild-bundle both browser renderers — the dashboard (+ Chart.js) and the menu card | [scripts/build-renderer.mjs](../scripts/build-renderer.mjs) |
 | `electron-builder` config | Packaging / signing / notarization | [electron-builder.config.cjs](../electron-builder.config.cjs) |
 
 ## Composition Overview
@@ -20,6 +21,7 @@
 flowchart TD
     main["main.ts<br/>app lifecycle + wiring"] --> svc["CaptureService"]
     main --> tray["TrayManager (display-only)"]
+    main --> card["MenuCardRenderer<br/>(hidden window)"]
     main --> ipc["registerArchiveIpc"]
     main --> win["DashboardWindow"]
     svc -->|runDaily/Session| capture["capture.ts<br/>spawn + normalize"]
@@ -28,6 +30,9 @@ flowchart TD
     svc -->|onState TrayState| tray
     svc -->|merge records| store["ArchiveStore (store.ts)"]
     store -->|atomic JSON| archive[("userData/archive")]
+    tray -->|render card| card
+    card -->|executeJavaScript| cardr["menu-card/card.ts<br/>(Canvas 2D, esbuild bundle)"]
+    card -->|NativeImage| tray
     tray -->|Open Dashboard| win
     win -->|loadFile| renderer["dashboard/renderer.ts<br/>(Chart.js, esbuild bundle)"]
     renderer -->|burnbar.getSeries| preload["preload.mjs"]
@@ -36,7 +41,7 @@ flowchart TD
     ipc -->|DashboardSeries| renderer
 ```
 
-Single Electron **main** process. The tray-only design grew one on-demand **renderer** (the dashboard). [main.ts](../src/main.ts) wires the parts; [capture-service.ts](../src/capture-service.ts) owns the one external call and is the only writer of the archive; [tray.ts](../src/tray.ts) is a pure display consumer; the dashboard reads the archive only through the `burnbar.getSeries` preload channel. Pure logic lives in [store.ts](../src/store.ts) (merge) and [derive.ts](../src/derive.ts) (series) and is unit-tested in isolation.
+Single Electron **main** process. The tray-only design grew two browser **renderers**: the on-demand dashboard window, and a hidden, never-shown window the tray drives to rasterize its stats card. [main.ts](../src/main.ts) wires the parts; [capture-service.ts](../src/capture-service.ts) owns the one external call and is the only writer of the archive; [tray.ts](../src/tray.ts) is a pure display consumer that asks [menu-card-window.ts](../src/menu-card-window.ts) to paint its card; the dashboard reads the archive only through the `burnbar.getSeries` preload channel. Pure logic lives in [store.ts](../src/store.ts) (merge) and [derive.ts](../src/derive.ts) (series) and is unit-tested in isolation.
 
 ## Data Flow
 
@@ -51,13 +56,15 @@ sequenceDiagram
     Note over S: every refresh interval (default 15m; + launch, + quit, + Refresh Now)
     S->>C: runDailyReport(tz)
     C-->>S: CcusageDailyReport
-    S->>T: onState(TrayState {usage, lastUpdatedAt, sparkline, interval})
+    S->>A: deriveSeries(readAllDaily) → MenuCard (30d cost/tokens, top model, bars)
+    S->>T: onState(TrayState {usage, lastUpdatedAt, card, interval})
+    T->>T: MenuCardRenderer paints the card → NativeImage (cached by data signature)
     S->>A: mergeDaily(record) per date — writes only on change (dirty check)
     Note over S,A: sessions on launch / day-rollover / quit → mergeSessions
 ```
 
 1. **Ingest** — `CaptureService` calls `capture.ts`, which spawns the bundled ccusage CLI via the current runtime with `ELECTRON_RUN_AS_NODE=1` and `-z <tz>`. — [capture.ts:33-58](../src/capture.ts#L33-L58)
-2. **Render** — the daily report becomes `UsageData` and is pushed to the tray (display only). — [capture.ts#toUsageData](../src/capture.ts#L124)
+2. **Render** — the daily report becomes `UsageData`, and the archive yields a derived `MenuCard` (30-day figures); both go to the tray, which rasterizes the card via the hidden `MenuCardRenderer` window (display only). — [capture.ts#toUsageData](../src/capture.ts#L124), [capture-service.ts#computeCard](../src/capture-service.ts#L201), [menu-card-window.ts](../src/menu-card-window.ts)
 3. **Persist** — the same report is normalized to records and merged under keep-richest; writes are atomic and dirty-checked. — [capture-service.ts](../src/capture-service.ts), [store.ts](../src/store.ts)
 
 ### Read (dashboard)
@@ -68,7 +75,7 @@ The renderer asks `window.burnbar.getSeries({range, dimension})`; the preload fo
 
 - **The archive is the only persistent state** — per-day JSON, monthly-sharded sessions, and a manifest under `userData/archive`. Each merge is atomic and idempotent. — [store.ts](../src/store.ts), [ADR-006](./adr/006-durable-usage-archive.md)
 - `CaptureService` holds the refresh timer, the latest `UsageData`, an in-memory `dailyCache` (mirrors disk to skip unchanged days), and the day-rollover marker. — [capture-service.ts:40-47](../src/capture-service.ts#L40-L47)
-- The tray retains only its `Tray` handle and the latest usage; the dashboard window is created lazily and dropped on close. — [tray.ts](../src/tray.ts), [window.ts](../src/window.ts)
+- The tray retains its `Tray` handle, the latest state, and the cached card bitmap (keyed by a signature of the card data, so the 60 s label tick reuses it); the dashboard window is created lazily and dropped on close; the menu-card window is created once and reused. — [tray.ts](../src/tray.ts), [menu-card-window.ts](../src/menu-card-window.ts), [window.ts](../src/window.ts)
 
 ## Cross-Cutting Concerns
 
@@ -102,3 +109,4 @@ macOS is the target: Dock hidden, `LSUIElement` set, title only on darwin; non-d
 - **A durable, numbers-only archive** under `userData` that survives source purges. — [ADR-006](./adr/006-durable-usage-archive.md)
 - **"Keep richest, never shrink" merge** so a purge can never erase history; backfill is the same operation. — [ADR-007](./adr/007-keep-richest-merge.md)
 - **Dashboard via an ESM preload + a separate esbuild renderer bundle**, with a read-only IPC surface. — [ADR-008](./adr/008-dashboard-window-bundle.md)
+- **Menu stats card rendered by an off-screen window's Canvas 2D** (deterministic data-URL output, not `capturePage`), replacing the template sparkline. — [ADR-009](./adr/009-menu-stats-card.md)
