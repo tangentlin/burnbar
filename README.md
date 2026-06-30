@@ -49,24 +49,18 @@ With no credentials set, this produces an **unsigned** `.dmg`/`.zip` — fine fo
 
 ### Signing & notarization
 
-Signing and notarization are driven by environment variables (configured in [electron-builder.config.cjs](electron-builder.config.cjs)), so the build needs no edits to ship. You need a paid **Apple Developer** account and a **Developer ID Application** certificate.
+Signing and notarization are driven by environment variables (see [docs/signing-runbook.md](docs/signing-runbook.md) for the full walkthrough including certificate creation, verification steps, and troubleshooting).
 
 ```bash
-# Signing — point at your Developer ID cert...
-export CSC_LINK="/path/to/DeveloperID.p12"   # or a base64 of the .p12
+export CSC_LINK="/path/to/DeveloperID-Application.p12"
 export CSC_KEY_PASSWORD="cert-password"
-# ...or, if the identity is already in your login keychain:
-# export CSC_NAME="Developer ID Application: Your Name (TEAMID)"
-
-# Notarization — an app-specific password from appleid.apple.com:
 export APPLE_ID="you@example.com"
 export APPLE_APP_SPECIFIC_PASSWORD="abcd-efgh-ijkl-mnop"
 export APPLE_TEAM_ID="YOURTEAMID"
-
 pnpm dist:mac
 ```
 
-When signing vars are present the app is signed; when the notary vars are present it is also notarized and stapled, so it passes Gatekeeper on a second Mac. Omit either set and that step is skipped without failing the build.
+When signing vars are present the app is signed; when the notary vars are present it is also notarized and stapled, so it passes Gatekeeper on a second Mac. Omit either set and that step is skipped without failing the build. Use `pnpm dist:mac:debug` (sets `DEBUG_ENTITLEMENTS=1`) when you need lldb/Instruments to attach locally — that build cannot be notarized.
 
 ## Architecture
 

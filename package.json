@@ -34,7 +34,9 @@
     "icon": "node scripts/generate-icons.mjs",
     "dist": "pnpm build && electron-builder --config electron-builder.config.cjs",
     "dist:mac": "pnpm build && electron-builder --mac --config electron-builder.config.cjs",
-    "dist:mac:universal": "pnpm build && electron-builder --mac --universal --config electron-builder.config.cjs"
+    "dist:mac:universal": "pnpm build && electron-builder --mac --universal --config electron-builder.config.cjs",
+    "dist:mac:debug": "pnpm build && DEBUG_ENTITLEMENTS=1 electron-builder --mac --config electron-builder.config.cjs",
+    "dist:mac:signed": "bash scripts/dist-signed.sh"
   },
   "dependencies": {
     "ccusage": "20.0.14"

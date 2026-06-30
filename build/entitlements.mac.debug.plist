@@ -10,5 +10,11 @@
     <true/>
     <key>com.apple.security.cs.disable-executable-page-protection</key>
     <true/>
+    <!-- Debug-only: allow lldb/Instruments to attach. Never add these to the production
+         entitlements — notarization rejects get-task-allow in production builds. -->
+    <key>com.apple.security.cs.debugger</key>
+    <true/>
+    <key>com.apple.security.get-task-allow</key>
+    <true/>
 </dict>
 </plist>

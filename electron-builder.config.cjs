@@ -10,14 +10,21 @@
 //                   the login keychain.
 //   Notarization  — set APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
 //                   (notarytool reads these from the environment).
+//   Debug build   — set DEBUG_ENTITLEMENTS=1 (via `pnpm dist:mac:debug`) to use
+//                   build/entitlements.mac.debug.plist, which keeps cs.debugger
+//                   and get-task-allow so lldb/Instruments can attach locally.
+//                   Never use the debug plist for a notarized release build.
 //
-// With none set, the .dmg/.zip are produced unsigned — fine for local dev,
-// but Gatekeeper will block them on a second Mac.
+// With no signing vars set, the .dmg/.zip are produced unsigned — fine for
+// local dev, but Gatekeeper will block them on a second Mac.
 
 const hasSigningCreds = Boolean(process.env.CSC_LINK || process.env.CSC_NAME);
 const hasNotaryCreds = Boolean(
   process.env.APPLE_ID && process.env.APPLE_APP_SPECIFIC_PASSWORD && process.env.APPLE_TEAM_ID,
 );
+const entitlementsFile = process.env.DEBUG_ENTITLEMENTS
+  ? "build/entitlements.mac.debug.plist"
+  : "build/entitlements.mac.plist";
 
 /** @type {import("electron-builder").Configuration} */
 module.exports = {
@@ -38,6 +45,8 @@ module.exports = {
     // (or uses CSC_LINK); null → signing is explicitly skipped.
     identity: hasSigningCreds ? undefined : null,
     notarize: hasNotaryCreds,
+    entitlements: entitlementsFile,
+    entitlementsInherit: entitlementsFile,
     extendInfo: { LSUIElement: true },
     target: [
       { target: "dmg", arch: ["x64", "arm64"] },

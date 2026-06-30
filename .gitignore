@@ -142,3 +142,4 @@ build/icons/*
 !build/icons/icon.png
 
 .DS_Store
+.env.signing
