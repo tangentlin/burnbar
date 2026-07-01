@@ -41,7 +41,76 @@ jobs:
         # (Burnbar-0.2.0.dmg etc.), so this must run before the build step.
         run: npm pkg set version="${GITHUB_REF_NAME#v}"
 
-      - name: Build, sign, and notarize
+      - name: Pre-empt a published release blocking electron-builder's publish
+        # If a release for this tag was already created via the GitHub UI (and
+        # published, not draft), electron-builder's GitHub publisher — given our
+        # releaseType "draft" for stable tags — treats that as "existing type
+        # not compatible with publishing type" and SILENTLY skips uploading any
+        # assets (confirmed by reading node_modules/electron-publish/out/
+        # gitHubPublisher.js's getOrCreateRelease(): it logs a warning and
+        # returns null, and the build still exits 0). Converting it to draft
+        # first — mirroring the old gh-cli-only flow — lets the publisher's own
+        # find-or-create-by-tag logic (same file) reuse it normally.
+        #
+        # This only applies to STABLE tags (releaseType "draft" in
+        # electron-builder.config.cjs). Pre-release tags use releaseType
+        # "prerelease" and must end up PUBLISHED, not draft — getOrCreateRelease()
+        # reuses a release as-is via `if (release.draft) return release;` with no
+        # later step that restores draft/prerelease flags, so unconditionally
+        # forcing a pre-release tag's already-published release to draft here
+        # would permanently downgrade it to a hidden draft. Both steps are a
+        # no-op when the tag has no release yet.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME}"
+          if gh release view "$version" > /dev/null 2>&1; then
+            is_draft="$(gh release view "$version" --json isDraft -q .isDraft)"
+            if [[ "$version" == *-* ]]; then
+              # Pre-release tag: make sure the release is published + marked
+              # prerelease, matching releaseType "prerelease". Never force it
+              # to draft — that would hide an already-published release.
+              is_prerelease="$(gh release view "$version" --json isPrerelease -q .isPrerelease)"
+              if [[ "$is_draft" == "true" || "$is_prerelease" == "false" ]]; then
+                gh release edit "$version" --draft=false --prerelease
+              fi
+            else
+              # Stable tag: releaseType "draft" needs the release to be a draft
+              # for electron-builder's publisher to reuse it.
+              if [[ "$is_draft" == "false" ]]; then
+                gh release edit "$version" --draft
+              fi
+            fi
+          fi
+
+      - name: Build, sign, notarize, and publish
+        # electron-builder's own GitHub publisher (app-builder-lib/electron-publish,
+        # both vendored under node_modules — read empirically, not guessed) does the
+        # asset upload + emits latest-mac.yml (electron-updater's feed manifest,
+        # only produced on an actual publish — never on `--publish never`).
+        #
+        # `onTagOrDraft` (set via dist:mac:ci) is correct here because this
+        # workflow's only trigger is `on: push: tags: v*`: GitHub Actions sets
+        # GITHUB_REF_TYPE=tag / GITHUB_REF_NAME=<tag> for that event, and
+        # electron-publish's getCiTag() (electron-publish/out/publisher.js) reads
+        # exactly those two vars — so PublishManager's onTagOrDraft/onTag checks
+        # always see a tag here. `always` would behave identically for our
+        # GitHub-only publish block (scheduleUpload's onTagOrDraft short-circuit
+        # is unconditionally true for provider "github" — see
+        # app-builder-lib/out/publish/PublishManager.js); onTagOrDraft is kept
+        # because it's the policy electron-builder itself would auto-select for
+        # this exact CI shape, and it fails closed (never publishes) for a
+        # non-tag/local invocation instead of always trying to.
+        #
+        # Stable tags → releaseType "draft" (electron-builder.config.cjs) — a
+        # draft for manual review, matching the previous gh-cli flow. Pre-release
+        # tags (a hyphen after the version) → releaseType "prerelease" — published
+        # immediately. GH_TOKEN is required: GitHubPublisher's constructor reads
+        # GH_TOKEN/GITHUB_TOKEN from the environment (electron-publish/out/
+        # gitHubPublisher.js) and throws InvalidConfigurationError without it;
+        # the previous "Build, sign, and notarize" step never set it because
+        # publishing was a separate gh-cli step — now that electron-builder
+        # itself publishes, this step needs it too.
         run: pnpm dist:mac:ci
         env:
           # Signing: base64 of Developer ID .p12 + its password.
@@ -51,32 +120,39 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # electron-builder's GitHub publisher reads GH_TOKEN (see comment above).
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish GitHub Release
+      - name: Verify assets landed on the release (defense in depth)
+        # Belt-and-suspenders for the same silent-skip failure mode the pre-empt
+        # step above guards against — if it somehow still happened (e.g. a
+        # published release appeared between the two steps), upload the missing
+        # assets by hand instead of shipping a release with no update feed.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version="${GITHUB_REF_NAME}"
-          if gh release view "$version" > /dev/null 2>&1; then
-            # Release already exists (created via GitHub UI).
-            # Published releases are immutable — convert to draft so assets can be
-            # uploaded, then leave it as a draft for the author to review and publish.
-            is_draft="$(gh release view "$version" --json isDraft -q .isDraft)"
-            if [[ "$is_draft" == "false" ]]; then
-              gh release edit "$version" --draft
+          assets="$(gh release view "$version" --json assets -q '.assets[].name')"
+          missing=()
+          for f in release/*.dmg release/*.zip release/latest-mac.yml; do
+            if ! grep -qxF "$(basename "$f")" <<< "$assets"; then
+              missing+=("$f")
             fi
-            gh release upload "$version" release/*.dmg release/*.zip
-          else
-            # Release not yet created (git tag push flow) — create it now.
-            # Pre-release tags publish immediately; stable tags start as a draft.
-            if [[ "$version" == *"-"* ]]; then
-              release_flags="--prerelease"
-            else
-              release_flags="--draft"
-            fi
-            gh release create "$version" \
-              $release_flags \
-              --generate-notes \
-              release/*.dmg \
-              release/*.zip
+          done
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::warning::electron-builder did not upload: ${missing[*]} — uploading now"
+            gh release upload "$version" "${missing[@]}"
           fi
+
+      - name: Generate release notes
+        # electron-builder's GitHub publisher creates/reuses the release but does
+        # not auto-generate GitHub's native release notes (no equivalent of
+        # `gh release create --generate-notes`) — replicate that with the
+        # generate-notes API plus a release edit.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME}"
+          notes="$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
+            -f tag_name="$version" --jq .body)"
+          gh release edit "$version" --notes "$notes"

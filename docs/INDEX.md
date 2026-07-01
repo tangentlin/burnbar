@@ -27,6 +27,7 @@
 | [dashboard](./modules/dashboard.md) | Chart.js renderer (esbuild bundle) |
 | [menu-card-window](./modules/menu-card-window.md) | `MenuCardRenderer` — hidden window rasterizing the tray stats card |
 | [menu-card](./modules/menu-card.md) | Canvas 2D card renderer (esbuild bundle) |
+| [update-service](./modules/update-service.md) | `UpdateService` — electron-updater lifecycle feeding the tray's update row |
 | [types](./modules/types.md) | Shared contracts: usage, ccusage raw, archive records, series |
 | [icon-pipeline](./modules/icon-pipeline.md) | SVG → PNG icon generation (`pnpm icon`) |
 | [packaging](./modules/packaging.md) | electron-builder config, signing, notarization, entitlements |
@@ -41,6 +42,7 @@
 | [usage-dashboard](./features/usage-dashboard.md) | Chart.js window: cost over time, by model, by agent |
 | [usage-refresh](./features/usage-refresh.md) | Configurable cadence (15 min default), manual mode, Refresh Now |
 | [release-distribution](./features/release-distribution.md) | Building signed/notarized macOS artifacts |
+| [auto-update](./features/auto-update.md) | Tray-only update check/download/install via electron-updater |
 
 ## ADRs
 
@@ -55,3 +57,5 @@
 | [007](./adr/007-keep-richest-merge.md) | "Keep richest, never shrink" merge (anti-purge) |
 | [008](./adr/008-dashboard-window-bundle.md) | Dashboard: ESM preload, sandbox, separate renderer bundle |
 | [009](./adr/009-menu-stats-card.md) | Menu stats card via a hidden-window canvas, replacing the template sparkline |
+| [010](./adr/010-production-entitlements.md) | Remove debugger entitlements from production builds |
+| [011](./adr/011-auto-update-mechanism.md) | Tray-only auto-update via electron-updater + GitHub Releases |

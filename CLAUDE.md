@@ -85,16 +85,17 @@ npm run dist:mac     # Build DMG and ZIP for macOS (arm64 / Apple Silicon only)
 
 Single Electron **main** process, tray-first, with one on-demand dashboard window. The full module map and data-flow diagrams live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — this is the orientation:
 
-- **`src/main.ts`** — wires the collaborators (`ArchiveStore`, `CaptureService`, `TrayManager`, `DashboardWindow`, archive IPC), hides the Dock, and runs a bounded quit-time flush.
+- **`src/main.ts`** — wires the collaborators (`ArchiveStore`, `CaptureService`, `UpdateService`, `TrayManager`, `DashboardWindow`, archive IPC), hides the Dock, and runs a bounded quit-time flush.
 - **`src/capture-service.ts`** — `CaptureService` owns the single ccusage `daily` call that feeds **both** the tray and the archive on the configurable refresh interval (default 15 min; `0` = manual) plus "Refresh Now" (sessions on launch / day-rollover / quit). Best-effort: a failure never crashes the tray.
 - **`src/capture.ts`** — spawns ccusage through a dependency-injected runner and normalizes `daily`/`session` reports into archive records; also derives the tray `UsageData`. (Absorbed the old `usage.ts`.)
 - **`src/store.ts`** — `ArchiveStore`: the **pure** "keep richest, never shrink" merge plus atomic temp-then-rename JSON IO, monthly-sharded sessions, and the manifest. Highest-stakes module.
 - **`src/derive.ts`** — **pure** archive → `DashboardSeries` (cost over time, by model, by agent; 30d/90d/all).
 - **`src/time.ts`** — `systemTimezone` / `localDateString`; the pinned IANA tz passed to ccusage (`-z`) and recorded in the manifest.
-- **`src/tray.ts`** — **display-only** `TrayManager`: renders the pushed state as a rich bitmap "stats card" (today + 30-day spend/tokens, bar chart, top model) plus Refresh / Auto-Refresh / Open Dashboard / **About Burnbar** rows.
+- **`src/tray.ts`** — **display-only** `TrayManager`: renders the pushed state as a rich bitmap "stats card" (today + 30-day spend/tokens, bar chart, top model) plus Refresh / Auto-Refresh / Open Dashboard / **About Burnbar** / the state-driven update row.
 - **`src/menu-card-window.ts` / `src/menu-card/`** — the card renderer: `MenuCardRenderer` drives a hidden `BrowserWindow` whose canvas (`__burnbarDrawCard`) draws the card and returns a PNG the tray shows as a menu-item icon. See [docs/adr/009](docs/adr/009-menu-stats-card.md).
 - **`src/ipc.ts` / `src/preload.mts` / `src/window.ts` / `src/dashboard/`** — the read-only `archive:get-series` channel and the Chart.js dashboard (contextIsolation on, nodeIntegration off).
-- **`src/types.ts`** — shared contracts: tray DTOs, ccusage raw subset, archive records, dashboard series.
+- **`src/update-service.ts`** — `UpdateService` owns the electron-updater lifecycle (check/download/install) on its own fixed 4h timer, independent of the usage-refresh interval. `autoDownload` is always `false`; `quitAndInstall()` only fires from the tray's explicit "Restart to Update" click. See [docs/adr/011](docs/adr/011-auto-update-mechanism.md).
+- **`src/types.ts`** — shared contracts: tray DTOs, ccusage raw subset, archive records, dashboard series, update state.
 
 **Data flow (capture):** `CaptureService` → `capture.ts` spawns ccusage (`-z <tz>`) → the daily report becomes `UsageData` (pushed to the tray) **and** is normalized + merged into the archive under keep-richest, written atomically and only when a day's numbers change. **Data flow (dashboard):** renderer → `window.burnbar.getSeries` (preload) → IPC → `store.readAll*` + `deriveSeries` → `DashboardSeries`. See the keep-richest rule in [docs/adr/007](docs/adr/007-keep-richest-merge.md) and the durable-archive rationale in [docs/adr/006](docs/adr/006-durable-usage-archive.md).
 
@@ -145,12 +146,13 @@ src/
 ├── derive.ts          # Pure archive → dashboard series (cost + tokens)
 ├── settings.ts        # Persisted preferences (refresh interval; 0 = manual)
 ├── time.ts            # tz helpers + relative-time / interval formatting
-├── tray.ts            # Display-only tray: title, menu, stats card, Refresh, Auto-Refresh, About
+├── tray.ts            # Display-only tray: title, menu, stats card, Refresh, Auto-Refresh, About, update row
 ├── menu-card-window.ts # MenuCardRenderer: hidden window → canvas → card NativeImage
 ├── ipc.ts             # Read-only archive:get-series handler
 ├── preload.mts        # contextBridge → window.burnbar.getSeries (→ preload.mjs)
 ├── window.ts          # DashboardWindow (BrowserWindow + security)
-├── types.ts           # Shared types incl. archive records + series
+├── update-service.ts  # UpdateService: electron-updater check/download/install lifecycle
+├── types.ts           # Shared types incl. archive records + series + update state
 ├── dashboard/         # Browser-context renderer (esbuild-bundled)
 │   ├── index.html
 │   ├── renderer.ts    # Chart.js wiring, range/dimension toggles
@@ -170,7 +172,11 @@ Archive data lives in `app.getPath("userData")/archive` (per-day JSON + monthly 
 ## Release Process
 
 Releases are fully automated: push a `vX.Y.Z` tag and `.github/workflows/release.yml`
-builds, signs, notarizes, and publishes the GitHub Release with the arm64 DMG.
+builds, signs, and notarizes the arm64 DMG/ZIP, then electron-builder's own GitHub
+publisher (configured in `electron-builder.config.cjs`) uploads them to the GitHub
+Release alongside `latest-mac.yml` — the feed [auto-update](docs/features/auto-update.md)
+reads. Stable tags publish as a draft; pre-release tags (a hyphen after the version)
+publish immediately as a prerelease. See [docs/adr/011](docs/adr/011-auto-update-mechanism.md).
 
 ### One-time: store secrets in the repo
 
