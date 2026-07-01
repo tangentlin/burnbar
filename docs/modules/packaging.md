@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Turns the compiled app into distributable macOS artifacts (`.dmg` + `.zip`, arm64), with optional signing and notarization driven entirely by environment variables.
+Turns the compiled app into distributable macOS artifacts (`.dmg` + `.zip`, arm64), with optional signing and notarization driven entirely by environment variables, and (via the `publish` block) feeds those same artifacts to GitHub Releases — which doubles as [auto-update](../features/auto-update.md)'s electron-updater feed.
 
 ## Public Surface
 
@@ -19,11 +19,12 @@ Turns the compiled app into distributable macOS artifacts (`.dmg` + `.zip`, arm6
 - Mark the app agent-only via `LSUIElement` (no Dock). — [electron-builder.config.cjs:41](../../electron-builder.config.cjs#L41)
 - Build dmg + zip for arm64 (Apple Silicon only). — [electron-builder.config.cjs:61-64](../../electron-builder.config.cjs#L61-L64)
 - Conditionally sign/notarize from env presence. — [electron-builder.config.cjs:17-40](../../electron-builder.config.cjs#L17-L40)
+- Publish to GitHub Releases (`publish: { provider: "github", ... }`), which also emits `latest-mac.yml` — the feed manifest [UpdateService](./update-service.md) reads. Only actually publishes when invoked with a publish policy other than `never` (`dist:mac:ci` uses `--publish onTagOrDraft`; local `dist:mac` stays unpublished). — [electron-builder.config.cjs:85-90](../../electron-builder.config.cjs#L85-L90), [ADR-011](../adr/011-auto-update-mechanism.md)
 
 ## Non-Goals
 
-- No auto-update / Sparkle channel.
 - No Windows/Linux targets (config is `mac`-only). — [electron-builder.config.cjs:28-42](../../electron-builder.config.cjs#L28-L42)
+- No update-check/download/install logic — that's [update-service](./update-service.md); this module only produces the feed it reads.
 
 ## How It Works
 
@@ -40,6 +41,9 @@ flowchart TD
     notar -- yes --> stapled["notarize + staple"]
     notar -- no --> done["dmg + zip (arm64) → release/"]
     stapled --> done
+    done --> pub{"--publish policy?"}
+    pub -- never / local --> stop["release/ only, no upload"]
+    pub -- onTagOrDraft --> gh["GitHub Releases: dmg + zip + latest-mac.yml"]
 ```
 
 The hardened-runtime entitlements grant JIT / unsigned-executable-memory / library-validation-disable etc. — required for Electron under hardened runtime. — [build/entitlements.mac.plist](../../build/entitlements.mac.plist)
@@ -58,5 +62,9 @@ The hardened-runtime entitlements grant JIT / unsigned-executable-memory / libra
 ## Related Files
 
 - [icon-pipeline](./icon-pipeline.md) — produces the packaging icon.
+- [update-service](./update-service.md) — consumes the `latest-mac.yml` feed this module's publish config produces.
 - [features/release-distribution.md](../features/release-distribution.md) — the operator-facing release flow.
-- [adr/005-env-driven-signing-notarization.md](../adr/005-env-driven-signing-notarization.md) — rationale.
+- [features/auto-update.md](../features/auto-update.md) — the user-facing feature this feed enables.
+- [.github/workflows/release.yml](../../.github/workflows/release.yml) — the CI job that invokes `dist:mac:ci` with a publishing `--publish` policy.
+- [adr/005-env-driven-signing-notarization.md](../adr/005-env-driven-signing-notarization.md) — signing/notarization rationale.
+- [adr/011-auto-update-mechanism.md](../adr/011-auto-update-mechanism.md) — why/how the publish config feeds electron-updater.

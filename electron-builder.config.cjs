@@ -26,6 +26,14 @@ const entitlementsFile = process.env.DEBUG_ENTITLEMENTS
   ? "build/entitlements.mac.debug.plist"
   : "build/entitlements.mac.plist";
 
+// release.yml only ever runs on `push: tags: v*`, so GITHUB_REF_NAME is the tag
+// (e.g. "v0.2.0" or "v0.2.0-rc1"). A hyphen after the version marks a pre-release
+// tag — mirrors the release.yml/gh CLI convention this replaces. Falls back to
+// "draft" (electron-builder's own default) for a manual/local `--publish` run
+// with no tag in the environment.
+const releaseTag = process.env.GITHUB_REF_NAME ?? "";
+const releaseType = releaseTag.includes("-") ? "prerelease" : "draft";
+
 /** @type {import("electron-builder").Configuration} */
 module.exports = {
   appId: "com.tangentlin.burnbar",
@@ -68,5 +76,16 @@ module.exports = {
       { x: 410, y: 150, type: "link", path: "/Applications" },
       { x: 130, y: 150, type: "file" },
     ],
+  },
+  // GitHub Releases doubles as electron-updater's feed: publishing here also
+  // emits latest-mac.yml (the update manifest) alongside the dmg/zip — see
+  // ADR-011 and docs/features/release-distribution.md. owner/repo are explicit
+  // because package.json has no `repository` field for electron-builder to
+  // infer from.
+  publish: {
+    provider: "github",
+    owner: "tangentlin",
+    repo: "burnbar",
+    releaseType,
   },
 };

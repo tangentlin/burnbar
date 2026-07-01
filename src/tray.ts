@@ -12,12 +12,19 @@ import { fileURLToPath } from "node:url";
 import type { MenuCardRenderer } from "./menu-card-window.js";
 import { REFRESH_PRESETS_MINUTES } from "./settings.js";
 import { formatIntervalLabel, formatRelativeTime } from "./time.js";
-import type { MenuCardData, TrayState, UsageData } from "./types.js";
+import type { MenuCardData, TrayState, UpdateState, UsageData } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Keep "Updated X ago" honest between data refreshes (UI-only; no ccusage call).
 const LABEL_REFRESH_MS = 60_000;
+
+const IDLE_UPDATE_STATE: UpdateState = {
+  status: "idle",
+  version: null,
+  percent: null,
+  error: null,
+};
 
 export type TrayCallbacks = {
   onOpenDashboard: () => void;
@@ -26,14 +33,20 @@ export type TrayCallbacks = {
   onAbout: () => void;
   onOpenLogFolder: () => void;
   onCopyDiagnostics: () => void;
+  onCheckForUpdates: () => void;
+  onDownloadUpdate: () => void;
+  onRestartToUpdate: () => void;
 };
 
 /**
- * Display-only consumer of {@link TrayState}. The CaptureService owns the ccusage
- * call and pushes state via {@link render}; the tray formats it into the title
- * and the context menu — a rich "stats card" bitmap (today + 30-day spend/tokens,
- * a bar chart, top model), an "Updated …" stamp + Refresh Now, the Auto-Refresh
- * submenu, Open Dashboard, About, and Quit. See docs/modules/tray.md.
+ * Display-only consumer of {@link TrayState} and {@link UpdateState}. The
+ * CaptureService owns the ccusage call and pushes state via {@link render};
+ * the UpdateService owns the electron-updater lifecycle and pushes state via
+ * {@link renderUpdate}. The tray formats both into the title and the context
+ * menu — a rich "stats card" bitmap (today + 30-day spend/tokens, a bar chart,
+ * top model), an "Updated …" stamp + Refresh Now, the Auto-Refresh submenu,
+ * Open Dashboard, About, the state-driven update row, and Quit. See
+ * docs/modules/tray.md.
  */
 export class TrayManager {
   private tray: Tray | null = null;
@@ -44,6 +57,7 @@ export class TrayManager {
     card: { cost30d: 0, tokens30d: 0, topModel: null, spark: [] },
     refreshIntervalMinutes: 0,
   };
+  private updateState: UpdateState = IDLE_UPDATE_STATE;
   // Cached card bitmap + the signature of the data it was rendered from, so the
   // 60s label tick and unchanged re-captures reuse it instead of re-rendering.
   private cardImage: NativeImage | null = null;
@@ -116,6 +130,12 @@ export class TrayManager {
     if (!state.usage.error) {
       void this.refreshCard(state);
     }
+  }
+
+  /** Apply the latest {@link UpdateState} from UpdateService and rebuild the menu. */
+  renderUpdate(state: UpdateState): void {
+    this.updateState = state;
+    this.rebuildMenu();
   }
 
   dispose(): void {
@@ -205,6 +225,7 @@ export class TrayManager {
       label: "Copy Diagnostics to Desktop",
       click: () => this.callbacks.onCopyDiagnostics(),
     });
+    items.push(this.buildUpdateItem(this.updateState));
 
     items.push({ type: "separator" });
     items.push({ label: "Quit", click: () => app.quit() });
@@ -240,6 +261,33 @@ export class TrayManager {
     }
 
     return { label: `Auto-Refresh: ${formatIntervalLabel(current)}`, submenu };
+  }
+
+  /**
+   * The single state-driven update row (see ADR-011's tray-only UX sketch):
+   * exactly one of these is always present, its label/behavior reflecting
+   * {@link UpdateState.status}. idle/not-available/error fold into a manual
+   * "Check for Updates" trigger — there is no separate always-visible
+   * "Up to date" row.
+   */
+  private buildUpdateItem(state: UpdateState): MenuItemConstructorOptions {
+    switch (state.status) {
+      case "checking":
+        return { label: "Checking for Updates...", enabled: false };
+      case "available":
+        return {
+          label: `Download Update (v${state.version})...`,
+          click: () => this.callbacks.onDownloadUpdate(),
+        };
+      case "downloading":
+        return { label: `Downloading... ${Math.round(state.percent ?? 0)}%`, enabled: false };
+      case "downloaded":
+        return { label: "Restart to Update", click: () => this.callbacks.onRestartToUpdate() };
+      case "idle":
+      case "error":
+      default:
+        return { label: "Check for Updates", click: () => this.callbacks.onCheckForUpdates() };
+    }
   }
 
   private addFallbackUsageItems(items: MenuItemConstructorOptions[], usageData: UsageData): void {

@@ -2,16 +2,16 @@
 
 ## Purpose
 
-The menu-bar surface — a display-only consumer of `TrayState`. It owns the template icon and macOS cost title, then renders the context menu: a rich **stats card** bitmap (today + 30-day spend/tokens, a bar chart, top model) shown as a non-selectable banner, "Open Usage Dashboard…" directly beneath it, an "Updated …" relative-time stamp, Refresh Now, an Auto-Refresh radio submenu, About Burnbar, and Quit. The Dashboard and Refresh rows carry template icons. It fetches nothing; the [CaptureService](./capture-service.md) pushes state via `render`, and the card bitmap + the row icons are rasterized by the injected [MenuCardRenderer](./menu-card-window.md).
+The menu-bar surface — a display-only consumer of `TrayState` **and** `UpdateState`. It owns the template icon and macOS cost title, then renders the context menu: a rich **stats card** bitmap (today + 30-day spend/tokens, a bar chart, top model) shown as a non-selectable banner, "Open Usage Dashboard…" directly beneath it, an "Updated …" relative-time stamp, Refresh Now, an Auto-Refresh radio submenu, About Burnbar / Open Log Folder / Copy Diagnostics, a single state-driven **update row**, and Quit. The Dashboard and Refresh rows carry template icons. It fetches nothing; the [CaptureService](./capture-service.md) pushes usage state via `render`, [UpdateService](./update-service.md) pushes update state via `renderUpdate`, and the card bitmap + the row icons are rasterized by the injected [MenuCardRenderer](./menu-card-window.md).
 
 ## Public Surface
 
 | Export | Type | File |
 |--------|------|------|
-| `TrayCallbacks` | `{ onOpenDashboard, onRefreshNow, onSetRefreshInterval, onAbout }` | [tray.ts:21](../../src/tray.ts#L21) |
-| `TrayManager` | class (`initialize`, `render`, `dispose`) — constructed with `(callbacks, cardRenderer)` | [tray.ts:35](../../src/tray.ts#L35) |
+| `TrayCallbacks` | `{ onOpenDashboard, onRefreshNow, onSetRefreshInterval, onAbout, onOpenLogFolder, onCopyDiagnostics, onCheckForUpdates, onDownloadUpdate, onRestartToUpdate }` | [tray.ts:22](../../src/tray.ts#L22) |
+| `TrayManager` | class (`initialize`, `render`, `renderUpdate`, `dispose`) — constructed with `(callbacks, cardRenderer)` | [tray.ts:49](../../src/tray.ts#L49) |
 
-Module-private: `toCardData()` (merges the derived `MenuCard` with today's numbers into the renderer input). All menu construction (`buildMenuItems`, `buildAutoRefreshItem`, `addFallbackUsageItems`, `updateTitle`, `refreshCard`, `loadIcons`, `rebuildMenu`) is instance-private.
+Module-private: `toCardData()` (merges the derived `MenuCard` with today's numbers into the renderer input); `buildUpdateItem()` (maps `UpdateState` to the single update menu row). All menu construction (`buildMenuItems`, `buildAutoRefreshItem`, `buildUpdateItem`, `addFallbackUsageItems`, `updateTitle`, `refreshCard`, `loadIcons`, `rebuildMenu`) is instance-private.
 
 ## Responsibilities
 
@@ -24,6 +24,7 @@ Module-private: `toCardData()` (merges the derived `MenuCard` with today's numbe
 - Render the stats card as a **non-selectable** banner (`enabled: false`, no click), with "Open Usage Dashboard…" directly beneath it as the drill-down action. Fall back to plain "Today's Usage" text rows only when the card image is unavailable (first-render gap or a render failure). — [buildMenuItems](../../src/tray.ts#L157), [addFallbackUsageItems](../../src/tray.ts#L217)
 - Stamp the menu appearance (`nativeTheme.shouldUseDarkColors`) into the card data so the transparent card's value text stays legible, and re-render the card on `nativeTheme` "updated". — [toCardData](../../src/tray.ts#L240), [handleThemeChange](../../src/tray.ts#L54)
 - Show the "Updated …" relative-time row + Refresh Now (icon), the Auto-Refresh radio submenu (presets + a disabled "Custom" radio for a non-preset value), and **About Burnbar** labeled with the app version (`app.getVersion()`). — [buildMenuItems](../../src/tray.ts#L157), [buildAutoRefreshItem](../../src/tray.ts#L189)
+- Render exactly one state-driven **update row** — label/behavior determined by `UpdateState.status` (`Check for Updates` / `Checking for Updates...` / `Download Update (vX.Y.Z)...` / `Downloading... NN%` / `Restart to Update`) — placed just above the final separator + Quit. There is no separate always-visible "Up to date" row. — [buildUpdateItem](../../src/tray.ts), [renderUpdate](../../src/tray.ts), [ADR-011](../adr/011-auto-update-mechanism.md)
 - Wire menu clicks to the injected `TrayCallbacks`; Quit calls `app.quit()`. — [buildMenuItems](../../src/tray.ts#L157)
 - Tear down the timer and destroy the tray on dispose (the card window is disposed by `main`). — [dispose](../../src/tray.ts#L110)
 
@@ -37,7 +38,9 @@ Module-private: `toCardData()` (merges the derived `MenuCard` with today's numbe
 
 ## How It Works
 
-`main` constructs the tray with the four callbacks and the `MenuCardRenderer`, then subscribes the service's `onState` to `tray.render`. — [main.ts](../../src/main.ts)
+`main` constructs the tray with the full `TrayCallbacks` and the `MenuCardRenderer`, then subscribes `CaptureService.onState` to `tray.render` and `UpdateService.onState` to `tray.renderUpdate`. — [main.ts](../../src/main.ts)
+
+`renderUpdate(state)` stores the `UpdateState` and rebuilds the menu — same shape as `render`, but without any card re-rasterization (the update row is plain text/icon-gutter, no bitmap). `buildUpdateItem` switches on `state.status` to pick the row's label and click handler; `idle`/`error` (and the initial/`update-not-available` state) collapse onto the same manual "Check for Updates" action.
 
 `initialize()` loads the template icon, starts the 60s label timer, builds the initial (cardless) menu, and kicks off `loadIcons` (render + cache the two row glyphs once; this also warms the hidden window). Each `render(state)` stores the state and rebuilds immediately (so the title and rows are fresh), then calls `refreshCard`. `refreshCard` builds the renderer input via `toCardData`, hashes it to a JSON signature, and re-rasterizes **only** when the signature changed (so the 60s tick and unchanged re-captures reuse the cached `NativeImage`); a newer state's signature supersedes an in-flight render. The card is a **display-only** banner (`enabled: false`); the drill-down lives in the "Open Usage Dashboard…" row immediately beneath it. On a ccusage error the card is dropped and the menu collapses to a single "Error loading usage data" line.
 
@@ -46,16 +49,18 @@ The Auto-Refresh submenu maps `REFRESH_PRESETS_MINUTES` to radio items (0 ⇒ "M
 ```mermaid
 flowchart LR
     svc["CaptureService.onState"] --> render["render(TrayState)"]
+    upd["UpdateService.onState"] --> renderUpd["renderUpdate(UpdateState)"]
     timer["60s label timer"] --> rebuild["rebuildMenu()"]
     init["initialize()"] --> icons["loadIcons() → renderIcon ×2 (cached)"]
     icons --> rebuild
     render --> rebuild
+    renderUpd --> rebuild
     render --> refresh["refreshCard() (signature-cached)"]
     refresh --> card["MenuCardRenderer.render() → NativeImage"]
     card --> rebuild
     rebuild --> title["updateTitle()"]
     rebuild --> menu["buildMenuItems() → setContextMenu()"]
-    menu --> cbs["TrayCallbacks: onOpenDashboard / onRefreshNow / onSetRefreshInterval / onAbout"]
+    menu --> cbs["TrayCallbacks: onOpenDashboard / onRefreshNow / onSetRefreshInterval / onAbout / onCheckForUpdates / onDownloadUpdate / onRestartToUpdate"]
 ```
 
 ## Key Types
@@ -65,7 +70,8 @@ flowchart LR
 | `TrayState` | full input the tray renders (usage, lastUpdatedAt, `card`, interval) | [types.ts#TrayState](../../src/types.ts) |
 | `MenuCard` / `MenuCardData` | derived 30-day figures + the renderer's combined input | [types.ts#MenuCard](../../src/types.ts) |
 | `UsageData` | today + all-time stats; drives the title + the fallback row | [types.ts#UsageData](../../src/types.ts#L13) |
-| `TrayCallbacks` | dashboard/refresh/interval/about hooks injected by `main` | [tray.ts:21](../../src/tray.ts#L21) |
+| `UpdateState` | electron-updater lifecycle snapshot; drives the single update row | [types.ts#UpdateState](../../src/types.ts) |
+| `TrayCallbacks` | dashboard/refresh/interval/about/log/diagnostics/update hooks injected by `main` | [tray.ts:22](../../src/tray.ts#L22) |
 
 ## Invariants & Failure Modes
 
@@ -77,6 +83,8 @@ flowchart LR
 - **Async-render safety**: a render whose signature is no longer current is discarded, so out-of-order completions never show stale numbers. — [refreshCard](../../src/tray.ts#L122)
 - **Icons are best-effort & cached**: rendered once at startup; if `renderIcon` returns `null` the rows simply show no icon. — [loadIcons](../../src/tray.ts#L87)
 - **Graceful degradation**: if the card renderer returns `null` (or before the first render lands), the menu shows plain-text "Today's Usage" rows instead of a blank item. — [addFallbackUsageItems](../../src/tray.ts#L217)
+- **Exactly one update row, always present**: `buildUpdateItem` always returns a row (idle/error fold onto the manual "Check for Updates" action) — there is no state that removes the row or leaves the menu without an update entry. — [buildUpdateItem](../../src/tray.ts), [ADR-011](../adr/011-auto-update-mechanism.md)
+- **The tray never calls `quitAndInstall()` itself**: `onRestartToUpdate` is a callback into `main.ts`, which is the sole caller of `UpdateService.quitAndInstall()` — the tray only renders the click target. — [buildUpdateItem](../../src/tray.ts), [main.ts](../../src/main.ts)
 
 ## Extension Points
 
@@ -89,11 +97,12 @@ flowchart LR
 ## Related Files
 
 - [capture-service.ts](../../src/capture-service.ts) — produces and pushes the `TrayState` (`onState`), including the derived `MenuCard`.
+- [update-service.ts](../../src/update-service.ts) → [update-service.md](./update-service.md) — produces and pushes the `UpdateState` (`onState`) the update row renders.
 - [menu-card-window.ts](../../src/menu-card-window.ts) → [menu-card-window.md](./menu-card-window.md) — the injected `MenuCardRenderer` that rasterizes the card bitmap.
 - [menu-card/](../../src/menu-card/) → [menu-card.md](./menu-card.md) — the browser-context canvas that draws the card.
-- [main.ts](../../src/main.ts) — wires the `TrayCallbacks` (incl. `onAbout` → GitHub) and the `MenuCardRenderer` to the service, window, and settings.
+- [main.ts](../../src/main.ts) — wires the `TrayCallbacks` (incl. `onAbout` → GitHub, `onCheckForUpdates`/`onDownloadUpdate`/`onRestartToUpdate` → `UpdateService`) and the `MenuCardRenderer` to the service, window, and settings.
 - [window.ts](../../src/window.ts) — opened by the card row and the dashboard menu item.
 - [time.ts](../../src/time.ts) — the relative-time / interval-label formatters.
 - [settings.ts](../../src/settings.ts) — `REFRESH_PRESETS_MINUTES` and interval persistence.
-- Sibling docs: [capture-service](./capture-service.md), [settings](./settings.md), [menu-card-window](./menu-card-window.md), [menu-card](./menu-card.md), [time](./time.md), [window](./window.md), [types](./types.md).
-- Feature: [usage-menu.md](../features/usage-menu.md), [usage-refresh.md](../features/usage-refresh.md), [usage-dashboard.md](../features/usage-dashboard.md).
+- Sibling docs: [capture-service](./capture-service.md), [update-service](./update-service.md), [settings](./settings.md), [menu-card-window](./menu-card-window.md), [menu-card](./menu-card.md), [time](./time.md), [window](./window.md), [types](./types.md).
+- Feature: [usage-menu.md](../features/usage-menu.md), [usage-refresh.md](../features/usage-refresh.md), [usage-dashboard.md](../features/usage-dashboard.md), [auto-update.md](../features/auto-update.md).

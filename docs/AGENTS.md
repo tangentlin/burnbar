@@ -26,7 +26,8 @@
 | App lifecycle / wiring / quit flush | [modules/main.md](./modules/main.md) → [src/main.ts](../src/main.ts) |
 | Window security / IPC / preload | [modules/window.md](./modules/window.md), [modules/ipc.md](./modules/ipc.md), [modules/preload.md](./modules/preload.md) + [adr/008](./adr/008-dashboard-window-bundle.md) |
 | Change icons | [modules/icon-pipeline.md](./modules/icon-pipeline.md) → [scripts/generate-icons.mjs](../scripts/generate-icons.mjs) + the SVGs |
-| Package / sign / notarize | [modules/packaging.md](./modules/packaging.md), [features/release-distribution.md](./features/release-distribution.md) |
+| Package / sign / notarize / publish | [modules/packaging.md](./modules/packaging.md), [features/release-distribution.md](./features/release-distribution.md) |
+| Change update check/download/install behavior | [features/auto-update.md](./features/auto-update.md) → [src/update-service.ts](../src/update-service.ts) + [adr/011](./adr/011-auto-update-mechanism.md) |
 | Know WHY a non-obvious choice was made | [adr/](./adr/) |
 
 ## Fresh Repo Tree
@@ -127,9 +128,16 @@ This is unrelated to the `ELECTRON_RUN_AS_NODE` that [src/capture.ts](../src/cap
 - Icons: edit the SVGs, `pnpm icon`, keep the tray asset monochrome.
 - Release: bump `version`, `pnpm check && pnpm typecheck && pnpm test`, set signing/notary env vars, `pnpm dist:mac`. See [features/release-distribution.md](./features/release-distribution.md).
 
+### Change the auto-update behavior
+1. The lifecycle (check/download/install, error handling) lives in [update-service.ts](../src/update-service.ts); the fixed check cadence is `UPDATE_CHECK_INTERVAL_MINUTES` there — **not** `settings.ts`'s usage-refresh interval, which is a separate, user-configurable, manual-capable concern.
+2. The tray's single state-driven row lives in `buildUpdateItem` in [tray.ts](../src/tray.ts); wiring (`onCheckForUpdates`/`onDownloadUpdate`/`onRestartToUpdate`) is in [main.ts](../src/main.ts) — `quitAndInstall()` must only ever be reachable from the tray's explicit "Restart to Update" click.
+3. `pnpm check && pnpm typecheck && pnpm test`. Update [features/auto-update.md](./features/auto-update.md) + [modules/update-service.md](./modules/update-service.md); add/update an ADR if the mechanism itself changes (see [adr/011](./adr/011-auto-update-mechanism.md)).
+
 ## Boundaries
 
 The archive feature has hard rules (from the spec). **Never**: store conversation content or raw logs (numbers only); transmit archive data off-device; modify the source tools' logs; overwrite a richer record with a poorer one. **Ask first**: adding any dependency beyond chart.js/esbuild/vitest (and any native dep); changing the stored schema (bump `schemaVersion` + migration); changing tray click behavior or the displayed numbers. See [ADR-006](./adr/006-durable-usage-archive.md) / [ADR-007](./adr/007-keep-richest-merge.md).
+
+Auto-update has its own hard rules (see [ADR-011](./adr/011-auto-update-mechanism.md)). **Always**: only apply signed + notarized updates (enforced by electron-updater/Squirrel.Mac, not hand-rolled); let the user defer indefinitely. **Never**: ship unsigned update payloads; silently force-quit/restart during active use; skip signature verification; call `quitAndInstall()` from anywhere but the tray's explicit "Restart to Update" click. **Ask first**: any telemetry/usage reporting of update activity; auto-restart behavior beyond the explicit click; background download over metered networks; making the check cadence user-configurable.
 
 ## Documentation Update Rules
 
@@ -141,7 +149,8 @@ The archive feature has hard rules (from the spec). **Never**: store conversatio
 | User-visible behavior | The relevant [features/*.md](./features/) + [functional-spec/PRODUCT.md](./functional-spec/PRODUCT.md) |
 | File/folder structure | The Conventions table above (and re-run `repo-tree.sh`) |
 | A consequential design decision | A new/updated [adr/*.md](./adr/) |
-| Packaging/signing behavior | [modules/packaging.md](./modules/packaging.md), [features/release-distribution.md](./features/release-distribution.md) |
+| Packaging/signing/publish behavior | [modules/packaging.md](./modules/packaging.md), [features/release-distribution.md](./features/release-distribution.md) |
+| Auto-update check/download/install behavior | [modules/update-service.md](./modules/update-service.md), [features/auto-update.md](./features/auto-update.md) |
 
 ## Context-Minimizing Guidance
 
@@ -150,4 +159,5 @@ The archive feature has hard rules (from the spec). **Never**: store conversatio
 - **Archive not filling / shrinking / corrupt:** [modules/store.md](./modules/store.md) → [src/store.ts](../src/store.ts) + [adr/007](./adr/007-keep-richest-merge.md).
 - **Dashboard wrong/blank:** [modules/derive.md](./modules/derive.md) → [src/derive.ts](../src/derive.ts), then [modules/ipc.md](./modules/ipc.md) / [modules/window.md](./modules/window.md).
 - **Build/ship issue:** [modules/packaging.md](./modules/packaging.md) + [features/release-distribution.md](./features/release-distribution.md).
+- **Update row stuck / not detecting a new release:** [modules/update-service.md](./modules/update-service.md) → [src/update-service.ts](../src/update-service.ts); check that CI actually published `latest-mac.yml` — [modules/packaging.md](./modules/packaging.md).
 - **"Why is it done this way?":** [adr/](./adr/) before changing anything.

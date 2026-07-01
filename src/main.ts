@@ -8,6 +8,7 @@ import { SettingsStore } from "./settings.js";
 import { ArchiveStore } from "./store.js";
 import { systemTimezone } from "./time.js";
 import { TrayManager } from "./tray.js";
+import { UpdateService } from "./update-service.js";
 import { DashboardWindow } from "./window.js";
 
 // Bound the final flush so a hung ccusage can never block app shutdown.
@@ -18,6 +19,7 @@ let captureService: CaptureService | null = null;
 let trayManager: TrayManager | null = null;
 let dashboardWindow: DashboardWindow | null = null;
 let menuCardRenderer: MenuCardRenderer | null = null;
+let updateService: UpdateService | null = null;
 
 app.whenReady().then(async () => {
   // Hide the dock icon on macOS for menu-bar-only operation.
@@ -42,6 +44,7 @@ app.whenReady().then(async () => {
     refreshIntervalMinutes: settings.getRefreshIntervalMinutes(),
     logger,
   });
+  const updates = new UpdateService({ logger });
   const dashboard = new DashboardWindow();
   const menuCard = new MenuCardRenderer();
   const tray = new TrayManager(
@@ -75,6 +78,11 @@ app.whenReady().then(async () => {
             logger.log("error", "Failed to copy diagnostics to Desktop", error);
           });
       },
+      onCheckForUpdates: () => void updates.checkNow(),
+      onDownloadUpdate: () => void updates.downloadUpdate(),
+      // The only call site for quitAndInstall — the explicit-click guarantee
+      // (ADR-011) is enforced here, not just inside UpdateService.
+      onRestartToUpdate: () => updates.quitAndInstall(),
     },
     menuCard,
   );
@@ -83,11 +91,14 @@ app.whenReady().then(async () => {
   trayManager = tray;
   dashboardWindow = dashboard;
   menuCardRenderer = menuCard;
+  updateService = updates;
 
   registerArchiveIpc(store, timezone);
   tray.initialize();
   service.onState((state) => tray.render(state));
+  updates.onState((state) => tray.renderUpdate(state));
   await service.start();
+  updates.start();
 });
 
 let quitting = false;
@@ -95,11 +106,18 @@ let quitting = false;
 app.on("before-quit", (event) => {
   // First pass: defer the quit once, flush the last interval best-effort, then
   // really quit. Second pass (after our app.quit) tears everything down.
+  //
+  // Note: UpdateService.quitAndInstall() itself calls the real electron-updater's
+  // quitAndInstall(), which internally triggers app.quit()/app.exit() — that
+  // re-enters this same handler. It just rides the bounded flush-then-quit
+  // dance below like any other quit, delaying the install+relaunch by at most
+  // QUIT_FLUSH_TIMEOUT_MS while the last usage capture flushes.
   if (quitting || !captureService) {
     captureService?.dispose();
     trayManager?.dispose();
     dashboardWindow?.dispose();
     menuCardRenderer?.dispose();
+    updateService?.dispose();
     return;
   }
 
@@ -112,6 +130,7 @@ app.on("before-quit", (event) => {
   ]);
   void bounded.finally(() => {
     captureService?.dispose();
+    updateService?.dispose();
     app.quit();
   });
 });

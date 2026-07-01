@@ -49,6 +49,14 @@
 - **MUST** support optional signing + notarization without source edits.
 - **MUST** still build successfully without any signing credentials (unsigned).
 
+### Auto-Update
+- **MUST** notify the user, from the tray only (no window), when a newer signed release is available.
+- **MUST NOT** download an update without an explicit user action.
+- **MUST NOT** install/restart without an explicit user action ("Restart to Update") — never automatically, never mid-use.
+- **MUST** only install signed + notarized payloads (enforced by the OS-level updater, not hand-rolled).
+- **MUST** keep checking for updates on a fixed background cadence independent of the user-configurable usage-refresh interval.
+- **MUST** be best-effort — a failed check or download never crashes or blocks the tray.
+
 ## Non-Functional Requirements
 
 - **Privacy**: read-only access to the source logs; the archive holds numbers only and stays on-device; zero telemetry/network.
@@ -94,10 +102,16 @@ erDiagram
 2. Run the macOS dist command.
 3. Distribute the signed, notarized `.dmg`/`.zip`.
 
+### Update to the latest release
+1. Burnbar checks GitHub Releases in the background every few hours (or the user clicks "Check for Updates" in the tray).
+2. When a newer signed release is found, the tray row becomes "Download Update (vX.Y.Z)..." — clicking it downloads.
+3. Once downloaded, the row becomes "Restart to Update" — clicking it installs and relaunches. Nothing installs before this click.
+
+**Edge cases:** check/download fails → row falls back to "Check for Updates", failure logged only; no newer release → row stays "Check for Updates".
+
 ## Out of Scope
 
 - Budgets, alerts, or spend projections.
 - Cloud sync, export pipelines, or multi-machine archive merge.
-- Auto-update mechanism.
 - Windows / Linux builds.
 - Reconciling against official provider billing (explicitly a non-goal; figures are estimates). — [README.md](../../README.md)

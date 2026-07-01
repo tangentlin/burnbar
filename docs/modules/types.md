@@ -17,7 +17,8 @@ The shared, behavior-free type contracts for the whole app: the tray-display DTO
 | `BurnbarBridge` | the `window.burnbar` surface the preload exposes | [types.ts:159-161](../../src/types.ts#L159-L161) |
 | `AppSettings` | persisted user preferences (`settings.json`) | [types.ts:166-168](../../src/types.ts#L166-L168) |
 | `MenuCard`, `MenuCardData` | derived 30-day stats-card figures, and the card renderer's full input (+ today's numbers) | [types.ts:175-189](../../src/types.ts#L175-L189) |
-| `TrayState` | the full payload pushed to the tray on every capture/setting change | [types.ts:196-201](../../src/types.ts#L196-L201) |
+| `TrayState` | the full payload pushed to the tray on every capture/setting change | [types.ts:207-212](../../src/types.ts#L207-L212) |
+| `UpdateStatus`, `UpdateState` | electron-updater lifecycle status + the serializable snapshot pushed to the tray's update row | [types.ts:220-239](../../src/types.ts#L220-L239) |
 
 This module is pure type declarations — no runtime exports, no helpers.
 
@@ -27,7 +28,8 @@ This module is pure type declarations — no runtime exports, no helpers.
 - Define the **external contract** assumed from ccusage — only the fields actually read. — [types.ts:22-72](../../src/types.ts#L22-L72)
 - Define the **durable archive** shapes persisted by `store`. — [types.ts:77-131](../../src/types.ts#L77-L131)
 - Define the **dashboard contract** between IPC/derive and the renderer (`SeriesRequest` → `DashboardSeries`, `BurnbarBridge`); `SeriesDataset` carries cost (`data`) and a parallel `tokens` array per label index. — [types.ts:144-161](../../src/types.ts#L144-L161)
-- Define the **settings + tray-push contract**: `AppSettings.refreshIntervalMinutes` (`0` = manual only), the derived `MenuCard`/`MenuCardData` stats-card figures, and the `TrayState` snapshot the CaptureService emits. — [types.ts:166-201](../../src/types.ts#L166-L201)
+- Define the **settings + tray-push contract**: `AppSettings.refreshIntervalMinutes` (`0` = manual only), the derived `MenuCard`/`MenuCardData` stats-card figures, and the `TrayState` snapshot the CaptureService emits. — [types.ts:176-212](../../src/types.ts#L176-L212)
+- Define the **auto-update contract**: `UpdateStatus` (the lifecycle enum) and `UpdateState` (the serializable snapshot `UpdateService` pushes to the tray). — [types.ts:214-239](../../src/types.ts#L214-L239)
 
 ## Non-Goals
 
@@ -51,7 +53,8 @@ Two families share this file. The **archive records** (`DailyRecord`, `SessionRe
 | `AppSettings` | `{ refreshIntervalMinutes }` (`0` = manual) | [types.ts:166-168](../../src/types.ts#L166-L168) |
 | `MenuCard` | derived 30-day card figures: `cost30d`, `tokens30d`, `topModel`, `spark[]` (daily costs) | [types.ts:175-180](../../src/types.ts#L175-L180) |
 | `MenuCardData` | `MenuCard` + `todayCost`/`todayTokens` + `dark` (menu appearance) — the browser card renderer's input | [types.ts:186-190](../../src/types.ts#L186-L190) |
-| `TrayState` | `{ usage, lastUpdatedAt, card, refreshIntervalMinutes }` | [types.ts:196-201](../../src/types.ts#L196-L201) |
+| `TrayState` | `{ usage, lastUpdatedAt, card, refreshIntervalMinutes }` | [types.ts:207-212](../../src/types.ts#L207-L212) |
+| `UpdateState` | `{ status, version, percent, error }` — pushed by `UpdateService` on every transition | [types.ts:234-239](../../src/types.ts#L234-L239) |
 
 ## Invariants & Failure Modes
 
@@ -61,8 +64,9 @@ Two families share this file. The **archive records** (`DailyRecord`, `SessionRe
 - `SeriesDataset.tokens` is **parallel to** `data` — same length, same `labels` index; a chart line's cost and token total at index *i* describe the same day. — [types.ts:144-148](../../src/types.ts#L144-L148), [derive.ts](../../src/derive.ts)
 - `AppSettings.refreshIntervalMinutes === 0` is the **manual-only** sentinel — no auto-refresh timer is armed. — [types.ts:166-168](../../src/types.ts#L166-L168), [capture-service.ts:117](../../src/capture-service.ts#L117)
 - `MenuCard.topModel` is `null` when nothing was spent in range; `MenuCardData` extends `MenuCard` with nullable `todayCost`/`todayTokens` (null = no row yet) and `dark` (the menu appearance, which picks the transparent card's value-text color). The CaptureService derives `MenuCard` from the archive over the same 30-day window the dashboard's `30d` view uses, so the two stay consistent. — [types.ts:175-190](../../src/types.ts#L175-L190), [capture-service.ts#computeCard](../../src/capture-service.ts#L201)
-- `TrayState.lastUpdatedAt` is `null` until the first *successful* capture; it is the success stamp, not the last *attempt*. — [types.ts:198](../../src/types.ts#L198), [capture-service.ts:224-234](../../src/capture-service.ts#L224-L234)
+- `TrayState.lastUpdatedAt` is `null` until the first *successful* capture; it is the success stamp, not the last *attempt*. — [types.ts:209](../../src/types.ts#L209), [capture-service.ts:224-234](../../src/capture-service.ts#L224-L234)
 - `ArchiveManifest.schemaVersion` gates migrations; bump it when any record shape changes. — [types.ts:125-131](../../src/types.ts#L125-L131)
+- `UpdateState.version`/`percent`/`error` are `null` outside the states that populate them (e.g. `percent` only during `downloading`); `status` is the single source of truth for which fields are meaningful. — [types.ts:220-239](../../src/types.ts#L220-L239), [update-service.ts](../../src/update-service.ts)
 
 ## Extension Points
 
@@ -73,10 +77,10 @@ Two families share this file. The **archive records** (`DailyRecord`, `SessionRe
 
 ## Documentation Update Rule
 
-Changing any of these types must update this file's tables, [DOMAIN.md](../DOMAIN.md) glossary/ER, and the consuming module docs ([capture](./capture.md), [store](./store.md), [derive](./derive.md), [tray](./tray.md), [capture-service](./capture-service.md)).
+Changing any of these types must update this file's tables, [DOMAIN.md](../DOMAIN.md) glossary/ER, and the consuming module docs ([capture](./capture.md), [store](./store.md), [derive](./derive.md), [tray](./tray.md), [capture-service](./capture-service.md), [update-service](./update-service.md)).
 
 ## Related Files
 
-- Producers/consumers: [capture.ts](../../src/capture.ts), [store.ts](../../src/store.ts), [derive.ts](../../src/derive.ts), [tray.ts](../../src/tray.ts), [capture-service.ts](../../src/capture-service.ts), [settings.ts](../../src/settings.ts).
-- Sibling docs: [capture](./capture.md), [store](./store.md), [derive](./derive.md), [tray](./tray.md), [capture-service](./capture-service.md).
+- Producers/consumers: [capture.ts](../../src/capture.ts), [store.ts](../../src/store.ts), [derive.ts](../../src/derive.ts), [tray.ts](../../src/tray.ts), [capture-service.ts](../../src/capture-service.ts), [settings.ts](../../src/settings.ts), [update-service.ts](../../src/update-service.ts).
+- Sibling docs: [capture](./capture.md), [store](./store.md), [derive](./derive.md), [tray](./tray.md), [capture-service](./capture-service.md), [update-service](./update-service.md).
 - [DOMAIN.md](../DOMAIN.md) — glossary + ER for these contracts.

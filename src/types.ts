@@ -210,3 +210,30 @@ export type TrayState = {
   card: MenuCard; // derived 30-day figures for the menu stats card
   refreshIntervalMinutes: number;
 };
+
+// --- Auto-update (UpdateService) -------------------------------------------
+
+/**
+ * Lifecycle of the electron-updater check/download/install cycle. See
+ * ADR-011 for why this is tray-only with no auto-restart.
+ */
+export type UpdateStatus =
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "downloaded"
+  | "error";
+
+/**
+ * Serializable snapshot the tray renders into its single update menu row.
+ * `version` is set once an update is known (available/downloading/downloaded);
+ * `percent` is set only while downloading; `error` carries the last failure's
+ * message (status "error").
+ */
+export type UpdateState = {
+  status: UpdateStatus;
+  version: string | null;
+  percent: number | null;
+  error: string | null;
+};

@@ -6,8 +6,8 @@ As the maintainer, I want to produce signed, notarized macOS artifacts (and unsi
 
 ## Scope
 
-**Includes:** building `.dmg` + `.zip` for arm64 (Apple Silicon), optional signing + notarization via env vars, and the icon regeneration that feeds the artifact.
-**Excludes:** auto-update, Homebrew cask publishing (lives in a separate repo), CI-built releases (CI only lints + typechecks — see [.github/workflows/ci.yml](../../.github/workflows/ci.yml)).
+**Includes:** building `.dmg` + `.zip` for arm64 (Apple Silicon), optional signing + notarization via env vars, publishing to GitHub Releases (which also feeds [auto-update](./auto-update.md)'s `latest-mac.yml`), and the icon regeneration that feeds the artifact.
+**Excludes:** Homebrew cask publishing (lives in a separate repo), CI-built releases outside the tag-triggered publish workflow (`ci.yml` only lints + typechecks — see [.github/workflows/ci.yml](../../.github/workflows/ci.yml)).
 
 ## UX Flow (operator)
 
