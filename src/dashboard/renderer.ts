@@ -7,6 +7,7 @@ import {
   LinearScale,
   Tooltip,
 } from "chart.js";
+import { localDateString, systemTimezone } from "../time.js";
 import type {
   BurnbarBridge,
   DailyRecord,
@@ -220,7 +221,7 @@ function triggerDownload(content: string, filename: string, mimeType: string): v
 async function exportJson(): Promise<void> {
   const data = await window.burnbar.exportData();
   const json = JSON.stringify(data, null, 2);
-  const date = new Date().toISOString().slice(0, 10);
+  const date = localDateString(systemTimezone());
   triggerDownload(json, `burnbar-usage-${date}.json`, "application/json");
 }
 
@@ -228,7 +229,7 @@ async function exportCsv(): Promise<void> {
   const data = await window.burnbar.exportData();
   const rows = [CSV_HEADER, ...data.daily.map(dailyToCsvRow)];
   const csv = rows.join("\n") + "\n";
-  const date = new Date().toISOString().slice(0, 10);
+  const date = localDateString(systemTimezone());
   triggerDownload(csv, `burnbar-usage-${date}.csv`, "text/csv");
 }
 
