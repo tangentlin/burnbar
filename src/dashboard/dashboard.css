@@ -116,8 +116,11 @@ body {
   height: 100%;
 }
 
-.empty,
-.error {
+/* `:not([hidden])` keeps the author `display: flex` from overriding the UA
+   `[hidden] { display: none }` rule — otherwise the overlay never hides and,
+   sitting `inset: 0` over the canvas, it also swallows the chart's hover events. */
+.empty:not([hidden]),
+.error:not([hidden]) {
   position: absolute;
   inset: 0;
   margin: 0;
