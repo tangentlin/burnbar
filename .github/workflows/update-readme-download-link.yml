@@ -1,0 +1,70 @@
+name: Update README Download Link
+
+# Stable releases publish as a draft (see release.yml) and only become
+# publicly downloadable once a maintainer manually clicks "Publish release" —
+# so this reacts to that publish event rather than the tag push, otherwise
+# README.md would briefly link to an asset nobody outside the repo can fetch
+# yet. Pre-release tags publish immediately but are filtered out below: the
+# README should always point at the latest *stable* build.
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: readme-download-link
+  cancel-in-progress: false
+
+jobs:
+  update-link:
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the README update straight to main
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.x"
+
+      - name: Find the dmg asset
+        # Build the browser_download_url ourselves from the asset name rather
+        # than trust a specific `gh --json` field name for it — release.yml's
+        # own "Verify assets landed" step already relies on `.assets[].name`
+        # being stable, so reuse just that and the documented
+        # /releases/download/<tag>/<name> URL shape electron-builder publishes to.
+        id: asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          name="$(gh release view "$TAG" --repo "${{ github.repository }}" --json assets \
+            --jq '.assets[] | select(.name | endswith(".dmg")) | .name')"
+          if [[ -z "$name" ]]; then
+            echo "::error::No .dmg asset found on release $TAG"
+            exit 1
+          fi
+          echo "url=https://github.com/${{ github.repository }}/releases/download/$TAG/$name" >> "$GITHUB_OUTPUT"
+
+      - name: Update README.md
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          DMG_URL: ${{ steps.asset.outputs.url }}
+        run: node scripts/update-readme-download-link.mjs
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          if git diff --cached --quiet; then
+            echo "README.md already points at this release; nothing to do."
+            exit 0
+          fi
+          git commit -m "docs: point README download link at ${{ github.event.release.tag_name }}"
+          git push origin HEAD:main
