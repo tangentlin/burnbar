@@ -22,6 +22,11 @@ if (markerIndex === -1) {
   throw new Error(`${README_PATH} is missing the ${MARKER} marker`);
 }
 
-const lineStart = markerIndex + MARKER.length + 1; // skip marker + its newline
+const markerLineEnd = readme.indexOf("\n", markerIndex);
+if (markerLineEnd === -1) {
+  throw new Error(`${MARKER} must not be on the last line of ${README_PATH}`);
+}
+const lineStart = markerLineEnd + 1;
 const lineEnd = readme.indexOf("\n", lineStart);
-writeFileSync(README_PATH, readme.slice(0, lineStart) + newLine + readme.slice(lineEnd));
+const restStart = lineEnd === -1 ? readme.length : lineEnd;
+writeFileSync(README_PATH, readme.slice(0, lineStart) + newLine + readme.slice(restStart));
