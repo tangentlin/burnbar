@@ -1,11 +1,17 @@
 # 🔥 Burnbar
 
-A macOS menu bar app that shows your **Claude Code token burn and cost** at a glance — today's spend sits right in the menu bar, with all-time totals one click away.
+**Know what your AI coding agents are costing you, before the bill surprises you.** Burnbar lives in the macOS menu bar and shows today's spend at a glance, with all-time totals one click away — across Claude Code, Codex, and any other agent CLI [ccusage](https://github.com/ryoppippi/ccusage) reads, so you stop tab-switching between provider consoles to piece together what you actually spent.
+
+<!-- LATEST_DMG_LINK -->
+[**⬇️ Download for Mac (Apple Silicon) — v0.3.1**](https://github.com/tangentlin/burnbar/releases/download/v0.3.1/Burnbar-0.3.1-arm64.dmg) · [All releases](https://github.com/tangentlin/burnbar/releases/latest)
+
+![Burnbar's menu bar stats card and usage dashboard](assets/burnbar-screenshot.png)
 
 > Forked from [penicillin0/claude-usage-tracker-for-mac](https://github.com/penicillin0/claude-usage-tracker-for-mac) (MIT) and reworked to ride the current [ccusage](https://github.com/ryoppippi/ccusage) CLI. 🎉 Huge thanks to ccusage for the underlying usage analysis.
 
 ## Why Burnbar
 
+- 🧩 **One place for every agent** — Claude Code, Codex (OpenAI models), and anything else ccusage detects, side by side instead of scattered across separate provider dashboards
 - 🔥 **Live in the menu bar** — today's cost is always visible, no clicking required
 - 📊 **Today + all-time** token counts and cost
 - 🗄️ **Durable archive** — captures your usage history into a local store the agent CLIs can't purge, so your record survives even after they prune their logs
@@ -13,6 +19,10 @@ A macOS menu bar app that shows your **Claude Code token burn and cost** at a gl
 - 🌐 **Backend-agnostic** — it reads your local agent logs via ccusage, so it works the same whether Claude Code runs on the Anthropic API, **Google Vertex AI**, or **AWS Bedrock**
 - 🔒 **Private** — only reads local files, stores numbers only, and never leaves your machine
 - ⚡ **Tiny** — a thin Electron tray app over the ccusage CLI
+
+## Install
+
+Download the `.dmg` above, mount it, drag **Burnbar** into Applications, and launch it — that's it, no accounts or API keys to configure. It's a signed and notarized build, so Gatekeeper lets it run out of the box. Burnbar checks for new signed releases every 4 hours and offers to update from the tray.
 
 ## Requirements
 
