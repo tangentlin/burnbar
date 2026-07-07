@@ -7,6 +7,7 @@ import {
   nativeImage,
   nativeTheme,
 } from "electron";
+import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { MenuCardRenderer } from "./menu-card-window.js";
@@ -80,10 +81,22 @@ export class TrayManager {
 
   initialize(): void {
     const iconPath = path.join(__dirname, "..", "assets", "icon.png");
+    const icon2xPath = path.join(__dirname, "..", "assets", "icon@2x.png");
 
     try {
       // Template image: macOS tints it automatically for light/dark menu bars.
-      const icon = nativeImage.createFromPath(iconPath);
+      // Build it from the @2x (44px) asset at scaleFactor 2 so it renders crisp and
+      // correctly sized (~22pt, the menu-bar height) on Retina — a lone 44px asset
+      // loaded as @1x rendered oversized and blurry. The hand-tuned @1x (22px) is
+      // added as a best-effort representation for non-Retina displays.
+      const icon = nativeImage.createFromBuffer(readFileSync(icon2xPath), {
+        scaleFactor: 2,
+      });
+      try {
+        icon.addRepresentation({ scaleFactor: 1, buffer: readFileSync(iconPath) });
+      } catch {
+        // 1x rep is best-effort; the 2x rep already covers Retina menu bars.
+      }
       icon.setTemplateImage(true);
       this.tray = new Tray(icon);
       if (process.platform === "darwin") {

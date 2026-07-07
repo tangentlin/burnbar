@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Regenerates Burnbar's PNG icons from committed SVG sources, so both the menu-bar tray mark and the packaged app icon derive from a single source of truth.
+Regenerates the packaged **app icon** from its committed SVG source. The menu-bar **tray** PNGs are hand-authored and committed directly (optically tuned per size), so they are not part of this generation step — `assets/burnbar-tray.svg` is retained only as a design reference.
 
 ## Public Surface
 
@@ -14,7 +14,7 @@ Regenerates Burnbar's PNG icons from committed SVG sources, so both the menu-bar
 ## Responsibilities
 
 - Render [assets/burnbar.svg](../../assets/burnbar.svg) (full-color) → `build/icons/icon.png` at 1024px for packaging. — [scripts/generate-icons.mjs:31](../../scripts/generate-icons.mjs#L31)
-- Render [assets/burnbar-tray.svg](../../assets/burnbar-tray.svg) (monochrome) → `assets/icon.png` at 44px for the tray. — [scripts/generate-icons.mjs:32](../../scripts/generate-icons.mjs#L32)
+- The tray mark is **not** generated: `assets/icon.png` (22px @1x) and `assets/icon@2x.png` (44px @2x) are committed hand-authored monochrome templates. [tray.ts](../../src/tray.ts) builds the tray image from the @2x asset at `scaleFactor: 2` (crisp, ~22pt on Retina) and adds the @1x as a representation for non-Retina displays.
 
 ## Non-Goals
 
@@ -28,19 +28,22 @@ Uses `@resvg/resvg-js` (prebuilt npm binaries — no system `rsvg-convert`/Homeb
 ```mermaid
 flowchart LR
     a["assets/burnbar.svg"] -->|resvg 1024px| b["build/icons/icon.png"] --> pkg["electron-builder app icon"]
-    c["assets/burnbar-tray.svg"] -->|resvg 44px| d["assets/icon.png"] --> tray["tray.ts template image"]
+    d["assets/icon.png @1x + icon@2x.png @2x (hand-authored, committed)"] --> tray["tray.ts template image"]
+    c["assets/burnbar-tray.svg (design reference)"] -.-> d
 ```
 
 ## Invariants & Failure Modes
 
-- The **SVGs are the source of truth**; the PNGs are generated outputs (both are committed). — [scripts/generate-icons.mjs:3-12](../../scripts/generate-icons.mjs#L3-L12)
-- `assets/icon.png` must stay a monochrome template (consumed via `setTemplateImage(true)`). — [tray.ts:19-21](../../src/tray.ts#L19-L21)
+- For the **app icon**, `assets/burnbar.svg` is the source of truth; `build/icons/icon.png` is a generated, committed output. — [scripts/generate-icons.mjs:3-12](../../scripts/generate-icons.mjs#L3-L12)
+- The **tray** PNGs (`assets/icon.png` @1x + `assets/icon@2x.png` @2x) are the source of truth themselves — hand-authored and committed, deliberately *not* generated (per-size optical tuning a single SVG render can't reproduce).
+- `assets/icon.png` / `assets/icon@2x.png` must stay monochrome templates (consumed via `setTemplateImage(true)`). — [tray.ts](../../src/tray.ts)
 - Output dirs are created on demand (`mkdirSync recursive`). — [scripts/generate-icons.mjs:23](../../scripts/generate-icons.mjs#L23)
 
 ## Extension Points
 
-- To change icon art, edit the SVGs and re-run `pnpm icon` — never hand-edit the PNGs.
-- To add a size, add a `render(...)` call. — [scripts/generate-icons.mjs:31-32](../../scripts/generate-icons.mjs#L31-L32)
+- To change the **app icon** art, edit `assets/burnbar.svg` and re-run `pnpm icon` — never hand-edit `build/icons/icon.png`.
+- To change the **tray** art, replace the committed `assets/icon.png` (22px) and `assets/icon@2x.png` (44px) directly (keep them monochrome templates); update `assets/burnbar-tray.svg` to match as the reference.
+- To add an app-icon size, add a `render(...)` call. — [scripts/generate-icons.mjs:31](../../scripts/generate-icons.mjs#L31)
 
 ## Related Files
 
