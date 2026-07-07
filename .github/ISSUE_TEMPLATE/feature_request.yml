@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest an idea or improvement for Burnbar.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: What's missing or annoying today? Concrete scenarios help more than abstract asks.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like Burnbar to do instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches, workarounds, or tools you've tried.
+    validations:
+      required: false
