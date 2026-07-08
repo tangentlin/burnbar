@@ -18,6 +18,9 @@
 // With no signing vars set, the .dmg/.zip are produced unsigned — fine for
 // local dev, but Gatekeeper will block them on a second Mac.
 
+const { chmodSync, existsSync } = require("node:fs");
+const { join } = require("node:path");
+
 const hasSigningCreds = Boolean(process.env.CSC_LINK || process.env.CSC_NAME);
 const hasNotaryCreds = Boolean(
   process.env.APPLE_ID && process.env.APPLE_APP_SPECIFIC_PASSWORD && process.env.APPLE_TEAM_ID,
@@ -33,6 +36,44 @@ const entitlementsFile = process.env.DEBUG_ENTITLEMENTS
 // with no tag in the environment.
 const releaseTag = process.env.GITHUB_REF_NAME ?? "";
 const releaseType = releaseTag.includes("-") ? "prerelease" : "draft";
+
+// ccusage's native binary ships non-executable (mode 644) in its npm package
+// and relies on a runtime self-chmod the first time cli.js spawns it
+// (ensureNativeBinaryExecutable in ccusage/src/cli.js). That self-heal works
+// fine against a normal, writable node_modules checkout, but Hardened
+// Runtime denies chmod'ing a file executable inside an already-signed,
+// notarized app bundle at runtime — that's exactly the
+// "EPERM: operation not permitted, chmod ..." crash seen in production.
+// Fix it at packaging time instead, in the afterPack hook: electron-builder
+// calls this after asarUnpack has copied the native binary onto disk but
+// before it code-signs the bundle (PlatformPackager.doPack -> emitAfterPack
+// -> doSignAfterPack), so the binary ships both executable and signed.
+//
+// Hardcoded to darwin-arm64 because that's the only binary mac.target below
+// ever produces. If it's missing — e.g. a build run without the matching
+// optional dependency installed — fail with a message that names the cause
+// instead of a bare ENOENT.
+function chmodCcusageNativeBinary({ appOutDir, packager }) {
+  const binaryPath = join(
+    appOutDir,
+    `${packager.appInfo.productFilename}.app`,
+    "Contents",
+    "Resources",
+    "app.asar.unpacked",
+    "node_modules",
+    "@ccusage",
+    "ccusage-darwin-arm64",
+    "bin",
+    "ccusage",
+  );
+  if (!existsSync(binaryPath)) {
+    throw new Error(
+      `chmodCcusageNativeBinary: expected ccusage's native binary at ${binaryPath} but it's missing — ` +
+        `is @ccusage/ccusage-darwin-arm64 installed? (pnpm installs it automatically as an optionalDependency on an arm64 Mac.)`,
+    );
+  }
+  chmodSync(binaryPath, 0o755);
+}
 
 /** @type {import("electron-builder").Configuration} */
 module.exports = {
@@ -51,6 +92,8 @@ module.exports = {
   // unpacked binary) and @ccusage (the native binary itself) beside the .asar.
   // capture.ts redirects the spawn to this unpacked copy.
   asarUnpack: ["node_modules/ccusage/**", "node_modules/@ccusage/**"],
+  // See chmodCcusageNativeBinary above.
+  afterPack: chmodCcusageNativeBinary,
   mac: {
     category: "public.app-category.productivity",
     icon: "build/icons/icon.png",
