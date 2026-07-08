@@ -20,6 +20,7 @@ Turns the compiled app into distributable macOS artifacts (`.dmg` + `.zip`, arm6
 - Build dmg + zip for arm64 (Apple Silicon only). — [electron-builder.config.cjs:61-64](../../electron-builder.config.cjs#L61-L64)
 - Conditionally sign/notarize from env presence. — [electron-builder.config.cjs:17-40](../../electron-builder.config.cjs#L17-L40)
 - Publish to GitHub Releases (`publish: { provider: "github", ... }`), which also emits `latest-mac.yml` — the feed manifest [UpdateService](./update-service.md) reads. Only actually publishes when invoked with a publish policy other than `never` (`dist:mac:ci` uses `--publish onTagOrDraft`; local `dist:mac` stays unpublished). — [electron-builder.config.cjs:85-90](../../electron-builder.config.cjs#L85-L90), [ADR-011](../adr/011-auto-update-mechanism.md)
+- `afterPack` hook: `chmod +x` the unpacked ccusage native binary before signing — see [How It Works](#how-it-works) and [ADR-012](../adr/012-ccusage-binary-chmod-before-sign.md). — [electron-builder.config.cjs:40-76,96](../../electron-builder.config.cjs#L40-L76)
 
 ## Non-Goals
 
@@ -32,8 +33,9 @@ Turns the compiled app into distributable macOS artifacts (`.dmg` + `.zip`, arm6
 
 ```mermaid
 flowchart TD
-    build["pnpm build (tsc + esbuild → dist/)"] --> eb["electron-builder (files: !**/*.map)"]
-    eb --> sign{"CSC_LINK / CSC_NAME?"}
+    build["pnpm build (tsc + esbuild → dist/)"] --> eb["electron-builder (files: !**/*.map, asarUnpack ccusage)"]
+    eb --> chmod["afterPack: chmod +x unpacked ccusage-darwin-arm64 binary"]
+    chmod --> sign{"CSC_LINK / CSC_NAME?"}
     sign -- yes --> signed["sign (auto-discover identity)"]
     sign -- no --> unsigned["identity = null (skip)"]
     signed --> notar{"APPLE_ID + PASSWORD + TEAM_ID?"}
@@ -53,6 +55,7 @@ The hardened-runtime entitlements grant JIT / unsigned-executable-memory / libra
 - A credential-less build **never fails** for lack of signing — it just ships unsigned. — [electron-builder.config.cjs:14-15](../../electron-builder.config.cjs#L14-L15), [electron-builder.config.cjs:39-40](../../electron-builder.config.cjs#L39-L40)
 - Output lands in `release/` (git-ignored). — [electron-builder.config.cjs:26](../../electron-builder.config.cjs#L26)
 - The app icon comes from `build/icons/icon.png` (generated; see [icon-pipeline](./icon-pipeline.md)). — [electron-builder.config.cjs:34](../../electron-builder.config.cjs#L34)
+- ccusage's native binary ships non-executable in its own npm package and self-chmods at runtime; Hardened Runtime denies that self-chmod inside an already-signed, notarized bundle (`EPERM: operation not permitted, chmod ...`). The `afterPack` hook chmod's it before signing instead — this must keep running strictly before `doSignAfterPack`. If the unpacked binary is missing (e.g. `@ccusage/ccusage-darwin-arm64` wasn't installed), the hook fails the build with a named-cause error rather than shipping a broken app. — [electron-builder.config.cjs:40-76](../../electron-builder.config.cjs#L40-L76), [ADR-012](../adr/012-ccusage-binary-chmod-before-sign.md)
 
 ## Extension Points
 

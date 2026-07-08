@@ -50,6 +50,7 @@ See the signing/notarization decision flow in [modules/packaging.md](../modules/
 - Artifacts land in `release/` (git-ignored), not `dist/` (which is `tsc` output). — [electron-builder.config.cjs:26](../../electron-builder.config.cjs#L26)
 - First-ever Electron run downloads the binary lazily (Electron 42). — see [AGENTS.md](../AGENTS.md#run--build).
 - Build scripts use `pnpm` (the configured package manager); `npm run` works too but `pnpm install` is the supported path. — [package.json:47](../../package.json#L47)
+- ccusage's native binary must be `chmod +x`'d before signing (the `afterPack` hook does this) — Hardened Runtime blocks ccusage's own runtime self-chmod, which is what a signed build without this hook crashes with (`EPERM`). — [modules/packaging.md](../modules/packaging.md#invariants--failure-modes), [ADR-012](../adr/012-ccusage-binary-chmod-before-sign.md)
 
 ## Code Touchpoints
 
