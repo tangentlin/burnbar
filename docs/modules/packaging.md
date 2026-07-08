@@ -33,7 +33,7 @@ Turns the compiled app into distributable macOS artifacts (`.dmg` + `.zip`, arm6
 
 ```mermaid
 flowchart TD
-    build["pnpm build (tsc + esbuild → dist/)"] --> eb["electron-builder (files: !**/*.map, asarUnpack ccusage)"]
+    build["pnpm build (tsc + esbuild → dist/)"] --> eb["electron-builder (files: !**/*.map, asarUnpack ccusage + @ccusage)"]
     eb --> chmod["afterPack: chmod +x unpacked ccusage-darwin-arm64 binary"]
     chmod --> sign{"CSC_LINK / CSC_NAME?"}
     sign -- yes --> signed["sign (auto-discover identity)"]
