@@ -191,28 +191,34 @@ jobs:
             echo
           } > /tmp/changelog-entry.md
 
-          # Insert the new entry directly below the "## [Unreleased]" marker,
-          # so [Unreleased] always stays the top section for in-progress work.
+          # Insert the new version section at the top of the changelog —
+          # directly above the most recent existing "## [x.y.z]" heading — so
+          # the newest release is always first and no "Unreleased" placeholder
+          # section is needed. If the file has no version sections yet (the
+          # first ever release), append the section after the "# Changelog"
+          # header instead.
           awk '
-            /^## \[Unreleased\]/ && !done {
-              print
-              print ""
+            /^## \[/ && !inserted {
               while ((getline line < "/tmp/changelog-entry.md") > 0) print line
-              done = 1
-              next
+              inserted = 1
             }
             { print }
+            END {
+              if (!inserted) {
+                print ""
+                while ((getline line < "/tmp/changelog-entry.md") > 0) print line
+              }
+            }
           ' CHANGELOG.md > /tmp/CHANGELOG.md.new
 
-          # If CHANGELOG.md ever loses its "## [Unreleased]" marker (bad edit,
-          # merge conflict resolved wrong), the awk above matches nothing and
-          # silently passes the file through unchanged — the commit below
-          # would then no-op and the release would ship with no changelog
-          # entry and no error. Fail loudly instead so it's fixed before the
-          # next release.
+          # Defense in depth: the insert above always adds the new section, but
+          # if /tmp/changelog-entry.md were somehow unreadable (getline fails),
+          # awk would pass CHANGELOG.md through unchanged — the commit below
+          # would then no-op and the release would ship with no changelog entry
+          # and no error. Fail loudly instead so it's fixed before shipping.
           entry_header="## [$version] - $date"
           if ! grep -qF "$entry_header" /tmp/CHANGELOG.md.new; then
-            echo "::error::CHANGELOG.md has no '## [Unreleased]' marker — could not insert '$entry_header'. Restore the marker (see the instructions at the top of CHANGELOG.md) and re-run this job."
+            echo "::error::Failed to insert '$entry_header' into CHANGELOG.md — the generated notes at /tmp/changelog-entry.md may be empty. Check the 'Generate release notes' step above and re-run this job."
             exit 1
           fi
           mv /tmp/CHANGELOG.md.new CHANGELOG.md

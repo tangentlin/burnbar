@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.5.0] - 2026-07-08
+
+## What's Changed
+* Add GitHub-style calendar heatmap view to dashboard by @tangentlin in https://github.com/tangentlin/burnbar/pull/47
+
+
+**Full Changelog**: https://github.com/tangentlin/burnbar/compare/v0.4.1...v0.5.0
+
 ## [v0.4.1] - 2026-07-08
 
 ## What's Changed
