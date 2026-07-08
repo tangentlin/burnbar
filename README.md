@@ -88,6 +88,10 @@ src/
 
 Deep-dive docs for agents and contributors live in [docs/](docs/) — start at [docs/AGENTS.md](docs/AGENTS.md).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, conventions, and pre-PR checks. Found a security issue? See [SECURITY.md](SECURITY.md) instead of opening a public issue. Release history lives in [CHANGELOG.md](CHANGELOG.md).
+
 ## Disclaimer
 
 Unofficial, third-party tool — **not affiliated with or endorsed by Anthropic**. Displayed usage is computed from local ccusage data and may not match official billing; always confirm spend through your provider (Anthropic / Google Cloud / AWS). Provided "as is", without warranty.

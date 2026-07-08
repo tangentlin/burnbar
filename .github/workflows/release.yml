@@ -156,3 +156,73 @@ jobs:
           notes="$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
             -f tag_name="$version" --jq .body)"
           gh release edit "$version" --notes "$notes"
+
+          # Stash the same notes for the CHANGELOG.md step below so it doesn't
+          # have to hit the generate-notes API a second time. printf (not
+          # echo) keeps $notes byte-for-byte: echo can misparse a leading
+          # "-n"/"-e" as its own flag or expand backslash escapes depending on
+          # the shell, which would corrupt the markdown before it ever reaches
+          # CHANGELOG.md.
+          printf '%s\n' "$notes" > /tmp/release-notes.md
+
+      - name: Update CHANGELOG.md
+        # Appends the same GitHub-generated notes used for the release body
+        # into CHANGELOG.md on main, so the file stays in sync with every tag
+        # without a human remembering to edit it. This step operates on a
+        # fresh checkout of main (not the tag's detached-HEAD commit the build
+        # steps above ran on) so it can never rewrite history for other files
+        # — it only ever adds a section to CHANGELOG.md on top of whatever is
+        # latest on main at release time. actions/checkout above leaves
+        # git-credential wiring in place (persist-credentials defaults to
+        # true), so `git push` here authenticates the same way `gh` does.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME}"
+          date="$(date -u +%Y-%m-%d)"
+
+          git fetch origin main
+          git checkout -B main origin/main
+
+          {
+            echo "## [$version] - $date"
+            echo
+            cat /tmp/release-notes.md
+            echo
+          } > /tmp/changelog-entry.md
+
+          # Insert the new entry directly below the "## [Unreleased]" marker,
+          # so [Unreleased] always stays the top section for in-progress work.
+          awk '
+            /^## \[Unreleased\]/ && !done {
+              print
+              print ""
+              while ((getline line < "/tmp/changelog-entry.md") > 0) print line
+              done = 1
+              next
+            }
+            { print }
+          ' CHANGELOG.md > /tmp/CHANGELOG.md.new
+
+          # If CHANGELOG.md ever loses its "## [Unreleased]" marker (bad edit,
+          # merge conflict resolved wrong), the awk above matches nothing and
+          # silently passes the file through unchanged — the commit below
+          # would then no-op and the release would ship with no changelog
+          # entry and no error. Fail loudly instead so it's fixed before the
+          # next release.
+          entry_header="## [$version] - $date"
+          if ! grep -qF "$entry_header" /tmp/CHANGELOG.md.new; then
+            echo "::error::CHANGELOG.md has no '## [Unreleased]' marker — could not insert '$entry_header'. Restore the marker (see the instructions at the top of CHANGELOG.md) and re-run this job."
+            exit 1
+          fi
+          mv /tmp/CHANGELOG.md.new CHANGELOG.md
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "No CHANGELOG.md changes to commit"
+          else
+            git commit -m "docs: add $version to CHANGELOG.md"
+            git push origin HEAD:main
+          fi
