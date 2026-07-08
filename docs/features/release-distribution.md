@@ -12,17 +12,17 @@ As the maintainer, I want to produce signed, notarized macOS artifacts (and unsi
 ## UX Flow (operator)
 
 ### Unsigned (local)
-`pnpm dist:mac` with no env → unsigned `.dmg`/`.zip` in `release/`. Gatekeeper blocks them on other Macs. — [README.md](../../README.md), [electron-builder.config.cjs:14-15](../../electron-builder.config.cjs#L14-L15)
+`pnpm dist:mac` with no env → unsigned `.dmg`/`.zip` in `release/`. Gatekeeper blocks them on other Macs. — [README.md](../../README.md), [electron-builder.config.cjs:18-19](../../electron-builder.config.cjs#L18-L19)
 
 ### Signed + notarized (release)
 Set signing + notary env vars, then `pnpm dist:mac` → signed, notarized, stapled artifacts that pass Gatekeeper. — [README.md](../../README.md)
 
 ## Acceptance Criteria
 
-- [ ] `pnpm dist:mac` succeeds with **no** credentials (unsigned). — [electron-builder.config.cjs:35-36](../../electron-builder.config.cjs#L35-L36)
-- [ ] With `CSC_LINK`/`CSC_NAME`, artifacts are signed. — [electron-builder.config.cjs:17](../../electron-builder.config.cjs#L17)
-- [ ] With `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID`, artifacts are notarized. — [electron-builder.config.cjs:18-20](../../electron-builder.config.cjs#L18-L20)
-- [ ] An arm64 dmg + zip are produced. — [electron-builder.config.cjs:61-64](../../electron-builder.config.cjs#L61-L64)
+- [ ] `pnpm dist:mac` succeeds with **no** credentials (unsigned). — [electron-builder.config.cjs:104](../../electron-builder.config.cjs#L104)
+- [ ] With `CSC_LINK`/`CSC_NAME`, artifacts are signed. — [electron-builder.config.cjs:24](../../electron-builder.config.cjs#L24)
+- [ ] With `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD` + `APPLE_TEAM_ID`, artifacts are notarized. — [electron-builder.config.cjs:25-27](../../electron-builder.config.cjs#L25-L27)
+- [ ] An arm64 dmg + zip are produced. — [electron-builder.config.cjs:109-115](../../electron-builder.config.cjs#L109-L115)
 
 ## Build Commands
 
@@ -47,7 +47,7 @@ See the signing/notarization decision flow in [modules/packaging.md](../modules/
 
 ## Known Pitfalls
 
-- Artifacts land in `release/` (git-ignored), not `dist/` (which is `tsc` output). — [electron-builder.config.cjs:26](../../electron-builder.config.cjs#L26)
+- Artifacts land in `release/` (git-ignored), not `dist/` (which is `tsc` output). — [electron-builder.config.cjs:82](../../electron-builder.config.cjs#L82)
 - First-ever Electron run downloads the binary lazily (Electron 42). — see [AGENTS.md](../AGENTS.md#run--build).
 - Build scripts use `pnpm` (the configured package manager); `npm run` works too but `pnpm install` is the supported path. — [package.json:47](../../package.json#L47)
 - ccusage's native binary must be `chmod +x`'d before signing (the `afterPack` hook does this) — Hardened Runtime blocks ccusage's own runtime self-chmod, which is what a signed build without this hook crashes with (`EPERM`). — [modules/packaging.md](../modules/packaging.md#invariants--failure-modes), [ADR-012](../adr/012-ccusage-binary-chmod-before-sign.md)
