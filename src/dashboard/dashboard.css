@@ -6,6 +6,15 @@
   --muted: #9a9aa8;
   --accent: #6ea8fe;
   --border: #2c2c36;
+
+  /* Sequential single-hue (blue) magnitude ramp for the heatmap. On this dark
+     surface near-zero recedes toward the panel and spend brightens up to the
+     app accent; --hm-0 is the distinct "no usage" cell. */
+  --hm-0: #1b1b22;
+  --hm-1: #173a63;
+  --hm-2: #255fa6;
+  --hm-3: #3f83c4;
+  --hm-4: #6ea8fe;
   color-scheme: dark;
 }
 
@@ -79,6 +88,13 @@ body {
   padding: 2px;
 }
 
+/* The author `display: inline-flex` above outranks the UA `[hidden]` rule, so
+   toggling `.hidden` needs an explicit author rule to actually hide the group
+   (the heatmap view hides the breakdown toggle this way). */
+.segmented[hidden] {
+  display: none;
+}
+
 .segmented button {
   appearance: none;
   border: 0;
@@ -114,6 +130,13 @@ body {
 .chart-area canvas {
   width: 100%;
   height: 100%;
+}
+
+/* Chart.js sets an inline `display: block` on the canvas, which outranks the UA
+   `[hidden]` rule — so hiding it for the heatmap view needs `!important` to win
+   over that inline style. */
+.chart-area canvas[hidden] {
+  display: none !important;
 }
 
 /* `:not([hidden])` keeps the author `display: flex` from overriding the UA
@@ -157,4 +180,182 @@ body {
 .export-btn:hover {
   color: var(--text);
   border-color: var(--accent);
+}
+
+/* Heatmap (GitHub-style calendar) view. `:not([hidden])` mirrors the empty/error
+   overlay rule so the UA `[hidden]` display:none still wins when the view is off. */
+.heatmap:not([hidden]) {
+  --cell: 13px;
+  --cell-gap: 3px;
+  --weekday-gutter: 28px;
+  position: absolute;
+  inset: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.heatmap-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.heatmap-months {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--cell));
+  column-gap: var(--cell-gap);
+  margin-left: calc(var(--weekday-gutter) + var(--cell-gap));
+  margin-bottom: 4px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.heatmap-month {
+  grid-row: 1;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.heatmap-body {
+  display: flex;
+  gap: var(--cell-gap);
+}
+
+.heatmap-weekdays {
+  display: grid;
+  grid-template-rows: repeat(7, var(--cell));
+  row-gap: var(--cell-gap);
+  width: var(--weekday-gutter);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.heatmap-weekdays span {
+  height: var(--cell);
+  line-height: var(--cell);
+}
+
+.heatmap-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, var(--cell));
+  grid-auto-columns: var(--cell);
+  gap: var(--cell-gap);
+}
+
+.heatmap-cell {
+  width: var(--cell);
+  height: var(--cell);
+  border-radius: 2px;
+  outline: 1px solid rgba(255, 255, 255, 0.04);
+  outline-offset: -1px;
+}
+
+.heatmap-cell.is-blank {
+  outline: none;
+  pointer-events: none;
+}
+
+.heatmap-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.heatmap-cell[data-level="0"],
+.heatmap-swatch[data-level="0"] {
+  background: var(--hm-0);
+}
+.heatmap-cell[data-level="1"],
+.heatmap-swatch[data-level="1"] {
+  background: var(--hm-1);
+}
+.heatmap-cell[data-level="2"],
+.heatmap-swatch[data-level="2"] {
+  background: var(--hm-2);
+}
+.heatmap-cell[data-level="3"],
+.heatmap-swatch[data-level="3"] {
+  background: var(--hm-3);
+}
+.heatmap-cell[data-level="4"],
+.heatmap-swatch[data-level="4"] {
+  background: var(--hm-4);
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.heatmap-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.heatmap-legend-label {
+  margin: 0 2px;
+}
+
+/* Fixed so it escapes the scroll container; no [hidden] display override needed
+   because the base rule never sets `display`. */
+.heatmap-tooltip {
+  position: fixed;
+  z-index: 10;
+  pointer-events: none;
+  min-width: 150px;
+  max-width: 260px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  font-size: 11px;
+}
+
+.heatmap-tooltip .tt-date {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+
+.heatmap-tooltip .tt-total {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.heatmap-tooltip .tt-total.tt-empty {
+  color: var(--muted);
+}
+
+.heatmap-tooltip .tt-section {
+  margin-top: 7px;
+  margin-bottom: 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.heatmap-tooltip .tt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.heatmap-tooltip .tt-name {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heatmap-tooltip .tt-val {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }

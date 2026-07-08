@@ -24,6 +24,10 @@
         <button type="button" data-range="90d">90d</button>
         <button type="button" data-range="all">All</button>
       </div>
+      <div class="segmented" id="view" role="group" aria-label="View">
+        <button type="button" data-view="chart" class="active" aria-pressed="true">Chart</button>
+        <button type="button" data-view="heatmap">Heatmap</button>
+      </div>
       <div class="segmented" id="dimension" role="group" aria-label="Breakdown">
         <button type="button" data-dim="none" class="active" aria-pressed="true">Total</button>
         <button type="button" data-dim="model">By model</button>
@@ -37,9 +41,32 @@
 
     <main class="chart-area">
       <canvas id="chart" aria-label="Usage cost chart" role="img"></canvas>
+      <div class="heatmap" id="heatmap" role="grid" aria-label="Daily cost heatmap" hidden>
+        <div class="heatmap-scroll">
+          <div class="heatmap-months" id="heatmap-months" aria-hidden="true"></div>
+          <div class="heatmap-body">
+            <div class="heatmap-weekdays" aria-hidden="true">
+              <span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span
+              ><span></span>
+            </div>
+            <div class="heatmap-grid" id="heatmap-grid"></div>
+          </div>
+        </div>
+        <div class="heatmap-legend" aria-hidden="true">
+          <span class="heatmap-legend-label">Less</span>
+          <span class="heatmap-swatch" data-level="0"></span>
+          <span class="heatmap-swatch" data-level="1"></span>
+          <span class="heatmap-swatch" data-level="2"></span>
+          <span class="heatmap-swatch" data-level="3"></span>
+          <span class="heatmap-swatch" data-level="4"></span>
+          <span class="heatmap-legend-label">More</span>
+        </div>
+      </div>
       <p class="empty" id="empty" hidden>No archived usage yet — it fills as Burnbar runs.</p>
       <p class="error" id="error" hidden></p>
     </main>
+
+    <div class="heatmap-tooltip" id="heatmap-tooltip" role="tooltip" hidden></div>
 
     <script type="module" src="renderer.js"></script>
   </body>

@@ -2,23 +2,24 @@
 
 ## Purpose
 
-The main-process IPC surface for the dashboard: registers the single read-only `archive:get-series` handler that reads the archive store, derives a chart series, and returns it to the renderer through the preload bridge.
+The main-process IPC surface for the dashboard: registers the read-only archive handlers (`archive:get-series`, `archive:get-heatmap`, plus the export channel) that read the archive store, derive the requested view, and return it to the renderer through the preload bridge.
 
 ## Public Surface
 
 | Export | Type | File |
 |--------|------|------|
-| `SERIES_CHANNEL` | the `"archive:get-series"` channel name | [ipc.ts:7](../../src/ipc.ts#L7) |
-| `registerArchiveIpc()` | `(store: ArchiveStore, timezone: string) => void` | [ipc.ts:18](../../src/ipc.ts#L18) |
+| `SERIES_CHANNEL` | the `"archive:get-series"` channel name | [ipc.ts#SERIES_CHANNEL](../../src/ipc.ts) |
+| `HEATMAP_CHANNEL` | the `"archive:get-heatmap"` channel name | [ipc.ts#HEATMAP_CHANNEL](../../src/ipc.ts) |
+| `registerArchiveIpc()` | `(store: ArchiveStore, timezone: string) => void` | [ipc.ts#registerArchiveIpc](../../src/ipc.ts) |
 
-The `RANGES`/`DIMENSIONS` allow-sets are module-private validation guards. — [ipc.ts:9-10](../../src/ipc.ts#L9-L10)
+The `RANGES`/`DIMENSIONS` allow-sets are module-private validation guards; the heatmap handler validates `range` against `RANGES` and takes no dimension. — [ipc.ts](../../src/ipc.ts)
 
 ## Responsibilities
 
-- Register one `ipcMain.handle(SERIES_CHANNEL, …)` handler — the only IPC entry point. — [ipc.ts:19](../../src/ipc.ts#L19)
-- Defensively coerce the raw request: default `range` to `"all"` and `dimension` to `"none"` unless the value is in the allow-set. — [ipc.ts:20-23](../../src/ipc.ts#L20-L23)
-- Read the full archive (`readAllDaily` + `readAllSessions`) in parallel. — [ipc.ts:25](../../src/ipc.ts#L25)
-- Resolve "today" in the pinned timezone and hand everything to `deriveSeries`. — [ipc.ts:26-27](../../src/ipc.ts#L26-L27)
+- Register the `SERIES_CHANNEL` and `HEATMAP_CHANNEL` (plus export) `ipcMain.handle` handlers — the dashboard's IPC entry points. — [ipc.ts](../../src/ipc.ts)
+- Defensively coerce each raw request: default `range` to `"all"` (and, for series, `dimension` to `"none"`) unless the value is in the allow-set. — [ipc.ts](../../src/ipc.ts)
+- Read the full archive (`readAllDaily` + `readAllSessions`) in parallel per call. — [ipc.ts](../../src/ipc.ts)
+- Resolve "today" in the pinned timezone and hand everything to `deriveSeries` / `deriveHeatmap`. — [ipc.ts](../../src/ipc.ts)
 
 ## Non-Goals
 
@@ -56,7 +57,7 @@ flowchart LR
 
 ## Extension Points
 
-- New dashboard query → add a channel constant + `ipcMain.handle` here, expose it in the [preload](./preload.md) bridge, and add the method to `BurnbarBridge`. — [types.ts#BurnbarBridge](../../src/types.ts#L158-L160)
+- New dashboard query → add a channel constant + `ipcMain.handle` here (as `HEATMAP_CHANNEL` did), expose it in the [preload](./preload.md) bridge, and add the method to `BurnbarBridge`. — [types.ts#BurnbarBridge](../../src/types.ts)
 - New `range`/`dimension` value → extend the type enum **and** the matching allow-set.
 
 ## Related Files

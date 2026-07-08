@@ -14,7 +14,8 @@ The shared, behavior-free type contracts for the whole app: the tray-display DTO
 | `TokenCounts`, `ModelBreakdown`, `RecordTotals` | archive token/model primitives | [types.ts:77-94](../../src/types.ts#L77-L94) |
 | `DailyRecord`, `SessionRecord`, `ArchiveManifest` | durable archive records | [types.ts:100-131](../../src/types.ts#L100-L131) |
 | `SeriesRange`, `SeriesDimension`, `SeriesRequest`, `SeriesDataset`, `DashboardSeries` | dashboard query + chart series | [types.ts:135-156](../../src/types.ts#L135-L156) |
-| `BurnbarBridge` | the `window.burnbar` surface the preload exposes | [types.ts:159-161](../../src/types.ts#L159-L161) |
+| `HeatmapRequest`, `HeatmapCell`, `HeatmapBreakdownEntry`, `HeatmapSeries` | calendar-heatmap query + per-day cells with model/agent splits | [types.ts#HeatmapSeries](../../src/types.ts) |
+| `BurnbarBridge` | the `window.burnbar` surface the preload exposes (`getSeries`, `getHeatmap`, `exportData`) | [types.ts#BurnbarBridge](../../src/types.ts) |
 | `AppSettings` | persisted user preferences (`settings.json`) | [types.ts:166-168](../../src/types.ts#L166-L168) |
 | `MenuCard`, `MenuCardData` | derived 30-day stats-card figures, and the card renderer's full input (+ today's numbers) | [types.ts:175-189](../../src/types.ts#L175-L189) |
 | `TrayState` | the full payload pushed to the tray on every capture/setting change | [types.ts:207-212](../../src/types.ts#L207-L212) |
@@ -27,7 +28,7 @@ This module is pure type declarations — no runtime exports, no helpers.
 - Define the tray display model (`UsageStats`, `UsageData`). — [types.ts:8-17](../../src/types.ts#L8-L17)
 - Define the **external contract** assumed from ccusage — only the fields actually read. — [types.ts:22-72](../../src/types.ts#L22-L72)
 - Define the **durable archive** shapes persisted by `store`. — [types.ts:77-131](../../src/types.ts#L77-L131)
-- Define the **dashboard contract** between IPC/derive and the renderer (`SeriesRequest` → `DashboardSeries`, `BurnbarBridge`); `SeriesDataset` carries cost (`data`) and a parallel `tokens` array per label index. — [types.ts:144-161](../../src/types.ts#L144-L161)
+- Define the **dashboard contract** between IPC/derive and the renderer (`SeriesRequest` → `DashboardSeries`, `HeatmapRequest` → `HeatmapSeries`, `BurnbarBridge`); `SeriesDataset` carries cost (`data`) and a parallel `tokens` array per label index, and each `HeatmapCell` carries the day total plus cost-descending `models`/`agents` splits. — [types.ts](../../src/types.ts)
 - Define the **settings + tray-push contract**: `AppSettings.refreshIntervalMinutes` (`0` = manual only), the derived `MenuCard`/`MenuCardData` stats-card figures, and the `TrayState` snapshot the CaptureService emits. — [types.ts:176-212](../../src/types.ts#L176-L212)
 - Define the **auto-update contract**: `UpdateStatus` (the lifecycle enum) and `UpdateState` (the serializable snapshot `UpdateService` pushes to the tray). — [types.ts:214-239](../../src/types.ts#L214-L239)
 

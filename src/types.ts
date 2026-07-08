@@ -155,6 +155,40 @@ export type DashboardSeries = {
   totalCost: number; // sum over the visible range
 };
 
+// --- Heatmap (calendar) series --------------------------------------------
+
+/** One model's or agent's share of a heatmap cell's day, for the hover detail. */
+export type HeatmapBreakdownEntry = {
+  label: string; // model name or agent name
+  cost: number;
+  tokens: number;
+};
+
+/**
+ * One calendar day in the GitHub-style heatmap. Color intensity is keyed to
+ * `cost`; the parallel `models`/`agents` splits (each cost-descending) feed the
+ * cell's hover detail. Days with no usage carry `cost`/`tokens` of 0.
+ */
+export type HeatmapCell = {
+  date: string; // YYYY-MM-DD in the pinned tz
+  cost: number; // authoritative day total (from the daily record)
+  tokens: number;
+  models: HeatmapBreakdownEntry[]; // per-model split (authoritative daily source)
+  agents: HeatmapBreakdownEntry[]; // per-agent split (sessions; day-boundary approximation)
+};
+
+/** Calendar-heatmap payload: a continuous, zero-filled run of daily cells. */
+export type HeatmapSeries = {
+  range: SeriesRange;
+  cells: HeatmapCell[]; // one per day in [start, today], ascending
+  totalCost: number; // summed over cells (matches the range's Total-spend headline)
+};
+
+/** The heatmap is always keyed to total cost, so only the range is selectable. */
+export type HeatmapRequest = {
+  range: SeriesRange;
+};
+
 /**
  * Raw archive data returned for the export feature (issue #23).
  * The renderer serializes this to JSON or CSV for download.
@@ -167,6 +201,7 @@ export type ExportData = {
 /** Surface exposed to the renderer via the contextBridge preload. */
 export type BurnbarBridge = {
   getSeries: (request: SeriesRequest) => Promise<DashboardSeries>;
+  getHeatmap: (request: HeatmapRequest) => Promise<HeatmapSeries>;
   exportData: () => Promise<ExportData>;
 };
 
