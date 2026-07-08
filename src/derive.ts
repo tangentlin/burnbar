@@ -2,6 +2,9 @@ import { localDateString } from "./time.js";
 import type {
   DailyRecord,
   DashboardSeries,
+  HeatmapBreakdownEntry,
+  HeatmapCell,
+  HeatmapSeries,
   SeriesDataset,
   SeriesDimension,
   SeriesRange,
@@ -155,4 +158,79 @@ export function deriveSeries(
   );
 
   return { range, dimension, labels, datasets, totalCost };
+}
+
+// --- Heatmap (calendar) ----------------------------------------------------
+
+/** Sort a label→{cost,tokens} map into cost-descending breakdown rows (label tie-break). */
+function breakdownByCost(
+  totals: Map<string, { cost: number; tokens: number }>,
+): HeatmapBreakdownEntry[] {
+  return [...totals]
+    .map(([label, value]) => ({ label, cost: value.cost, tokens: value.tokens }))
+    .sort((a, b) => b.cost - a.cost || a.label.localeCompare(b.label));
+}
+
+/**
+ * Read-time projection for the calendar heatmap: one {@link HeatmapCell} per day
+ * over the same continuous, zero-filled axis the series views use. Intensity is
+ * the authoritative daily `cost`; each cell also carries a per-model split (from
+ * the daily record) and a per-agent split (summed from sessions, sharing the
+ * by-agent day-boundary approximation) for the hover detail. Pure — data in,
+ * data out, no IO.
+ */
+export function deriveHeatmap(
+  daily: DailyRecord[],
+  sessions: SessionRecord[],
+  options: { range: SeriesRange; timezone: string; today: string },
+): HeatmapSeries {
+  const { range, timezone, today } = options;
+
+  // Anchor an "all" window to the earliest day present in either source so the
+  // grid spans every day that has usage (daily is authoritative for the total).
+  const sourceDates = [
+    ...daily.map((record) => record.date),
+    ...sessions
+      .map((session) => sessionLocalDate(session, timezone))
+      .filter((date): date is string => date !== null),
+  ];
+
+  const start = rangeStart(range, today, sourceDates);
+  const labels = dateAxis(start, today);
+  const inRange = new Set(labels);
+
+  const dailyByDate = new Map(daily.map((record) => [record.date, record]));
+
+  // Aggregate sessions to (local day → agent → running cost/tokens) once.
+  const agentsByDate = new Map<string, Map<string, { cost: number; tokens: number }>>();
+  for (const session of sessions) {
+    const date = sessionLocalDate(session, timezone);
+    if (date === null || !inRange.has(date)) {
+      continue;
+    }
+    const perAgent = agentsByDate.get(date) ?? new Map<string, { cost: number; tokens: number }>();
+    const prior = perAgent.get(session.agent) ?? { cost: 0, tokens: 0 };
+    perAgent.set(session.agent, {
+      cost: prior.cost + session.totals.totalCost,
+      tokens: prior.tokens + session.totals.totalTokens,
+    });
+    agentsByDate.set(date, perAgent);
+  }
+
+  const cells: HeatmapCell[] = labels.map((date) => {
+    const record = dailyByDate.get(date);
+    const models = (record?.models ?? [])
+      .map((entry) => ({ label: entry.modelName, cost: entry.cost, tokens: entry.totalTokens }))
+      .sort((a, b) => b.cost - a.cost || a.label.localeCompare(b.label));
+    return {
+      date,
+      cost: record?.totals.totalCost ?? 0,
+      tokens: record?.totals.totalTokens ?? 0,
+      models,
+      agents: breakdownByCost(agentsByDate.get(date) ?? new Map()),
+    };
+  });
+
+  const totalCost = cells.reduce((sum, cell) => sum + cell.cost, 0);
+  return { range, cells, totalCost };
 }

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The renderer's only door to the main process: a contextBridge preload that exposes `window.burnbar.getSeries` and nothing else. Compiled to `dist/preload.mjs` and loaded into the dashboard window.
+The renderer's only door to the main process: a contextBridge preload that exposes `window.burnbar` (`getSeries`, `getHeatmap`, `exportData`) and nothing else. Compiled to `dist/preload.mjs` and loaded into the dashboard window.
 
 ## Public Surface
 
@@ -14,8 +14,8 @@ No module exports. The "surface" is the runtime global `window.burnbar`, shaped 
 
 ## Responsibilities
 
-- Build the `bridge` object whose `getSeries` forwards to `ipcRenderer.invoke`. — [preload.mts:11-13](../../src/preload.mts#L11-L13)
-- Expose it as `window.burnbar` across the contextIsolation boundary. — [preload.mts:15](../../src/preload.mts#L15)
+- Build the `bridge` object whose methods (`getSeries`, `getHeatmap`, `exportData`) forward to `ipcRenderer.invoke`. — [preload.mts](../../src/preload.mts)
+- Expose it as `window.burnbar` across the contextIsolation boundary. — [preload.mts](../../src/preload.mts)
 
 ## Non-Goals
 
@@ -25,7 +25,7 @@ No module exports. The "surface" is the runtime global `window.burnbar`, shaped 
 
 ## How It Works
 
-A single statement: wrap one IPC `invoke` in a `BurnbarBridge` and hand it to `exposeInMainWorld`. The renderer then calls `window.burnbar.getSeries(req)` and awaits a `DashboardSeries`. The channel id is the string literal `"archive:get-series"`, which mirrors `SERIES_CHANNEL` in [ipc](./ipc.md) — the two must stay in sync by hand, since the preload can't import it (below). — [preload.mts:10-12](../../src/preload.mts#L10-L12)
+Wrap each IPC `invoke` in a `BurnbarBridge` and hand it to `exposeInMainWorld`. The renderer then calls e.g. `window.burnbar.getSeries(req)` / `getHeatmap(req)` and awaits the derived payload. Each channel id is an inlined string literal (`"archive:get-series"`, `"archive:get-heatmap"`, …) that mirrors the matching constant in [ipc](./ipc.md) — the two must stay in sync by hand, since the preload can't import them (below). — [preload.mts](../../src/preload.mts)
 
 ## Key Types
 
@@ -39,7 +39,7 @@ A single statement: wrap one IPC `invoke` in a `BurnbarBridge` and hand it to `e
 
 - **`.mts` → `.mjs` + `sandbox:false`**: the source is `.mts` so it compiles to an ES module (`preload.mjs`); Electron 42 only loads an ESM preload when the window runs un-sandboxed. The window sets `sandbox:false` with `contextIsolation:true` to honor this. — [preload.mts:4-5](../../src/preload.mts#L4-L5), [window.ts:30-34](../../src/window.ts#L30-L34)
 - **Self-contained**: only the `electron` import survives compilation; the `import type` is erased. The preload must never depend on other `dist/` modules resolving at load time, so the channel string is inlined rather than imported from [ipc](./ipc.md). — [preload.mts:1-10](../../src/preload.mts#L1-L10)
-- **Channel drift** [load-bearing]: if `"archive:get-series"` here and `SERIES_CHANNEL` diverge, every `getSeries` call silently hangs (no main-process handler). — [preload.mts:12](../../src/preload.mts#L12), [ipc.ts:7](../../src/ipc.ts#L7)
+- **Channel drift** [load-bearing]: if an inlined channel string here (`"archive:get-series"`, `"archive:get-heatmap"`, …) and its `*_CHANNEL` constant diverge, that bridge call silently hangs (no main-process handler). — [preload.mts](../../src/preload.mts), [ipc.ts](../../src/ipc.ts)
 - See [adr/008-dashboard-window-bundle.md](../adr/008-dashboard-window-bundle.md) for the bundling/loading rationale.
 
 ## Extension Points

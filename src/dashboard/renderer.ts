@@ -12,6 +12,9 @@ import type {
   BurnbarBridge,
   DailyRecord,
   DashboardSeries,
+  HeatmapBreakdownEntry,
+  HeatmapCell,
+  HeatmapSeries,
   SeriesDimension,
   SeriesRange,
 } from "../types.js";
@@ -62,9 +65,14 @@ function friendlyDate(iso: string): string {
   }).format(new Date(`${iso}T00:00:00Z`));
 }
 
+type View = "chart" | "heatmap";
+
 let chart: Chart | null = null;
 let range: SeriesRange = "30d";
 let dimension: SeriesDimension = "none";
+let view: View = "chart";
+// The cells backing the rendered grid, indexed by each cell element's data-index.
+let heatmapCells: HeatmapCell[] = [];
 
 function byId<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -85,6 +93,14 @@ function setControlState(): void {
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   }
+  for (const button of document.querySelectorAll<HTMLButtonElement>("#view button")) {
+    const active = button.dataset.view === view;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+  // The heatmap is keyed to total cost, so the model/agent breakdown toggle
+  // doesn't apply — hide it in that view rather than leave a dead control.
+  byId("dimension").hidden = view === "heatmap";
 }
 
 // Each Chart dataset carries a parallel `tokens` array (a custom prop Chart.js
@@ -161,11 +177,204 @@ function draw(series: DashboardSeries): void {
   });
 }
 
+// --- Heatmap (calendar) ---------------------------------------------------
+
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/** UTC weekday (0=Sun … 6=Sat) of a YYYY-MM-DD — UTC keeps the calendar day exact. */
+function weekdayOf(iso: string): number {
+  return new Date(`${iso}T00:00:00Z`).getUTCDay();
+}
+
+/**
+ * Build a cost → intensity level (0 = no spend, 1–4 = ascending) from the day
+ * costs. Buckets a day by the **rank** (quartile) of its cost among the positive
+ * days, so a single outlier day can't wash the rest of the grid out to near-empty
+ * (a linear ramp would) *and* the busiest day always reaches the top level — even
+ * with only a handful of active days, where fixed quantile cut-points would leave
+ * the max stuck a step below.
+ */
+function levelForCost(costs: number[]): (cost: number) => number {
+  const positive = costs.filter((cost) => cost > 0).sort((a, b) => a - b);
+  const total = positive.length;
+  if (total === 0) {
+    return () => 0;
+  }
+  return (cost) => {
+    if (cost <= 0) {
+      return 0;
+    }
+    // rank = how many positive days cost no more than this one (1…total), so the
+    // max day is rank `total` → level 4; ties share a rank, hence a level.
+    const firstAbove = positive.findIndex((value) => value > cost);
+    const rank = firstAbove === -1 ? total : firstAbove;
+    return Math.min(4, Math.ceil((rank / total) * 4));
+  };
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>"]/g,
+    (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char] as string,
+  );
+}
+
+function breakdownRows(title: string, entries: HeatmapBreakdownEntry[]): string {
+  if (entries.length === 0) {
+    return "";
+  }
+  const rows = entries
+    .map(
+      (entry) =>
+        `<div class="tt-row"><span class="tt-name">${escapeHtml(entry.label)}</span>` +
+        `<span class="tt-val">${usd.format(entry.cost)} · ${compact.format(entry.tokens)}</span></div>`,
+    )
+    .join("");
+  return `<div class="tt-section">${title}</div>${rows}`;
+}
+
+function tooltipHtml(cell: HeatmapCell): string {
+  const head = `<div class="tt-date">${friendlyDate(cell.date)}</div>`;
+  if (cell.cost <= 0 && cell.tokens <= 0) {
+    return `${head}<div class="tt-total tt-empty">No usage</div>`;
+  }
+  const total = `<div class="tt-total">${usd.format(cell.cost)} · ${compact.format(cell.tokens)} tokens</div>`;
+  return (
+    head + total + breakdownRows("By model", cell.models) + breakdownRows("By agent", cell.agents)
+  );
+}
+
+/** Human-readable value for the cell's `aria-label`, so detail isn't color-only. */
+function cellAriaLabel(cell: HeatmapCell): string {
+  if (cell.cost <= 0 && cell.tokens <= 0) {
+    return `${friendlyDate(cell.date)}: no usage`;
+  }
+  return `${friendlyDate(cell.date)}: ${usd.format(cell.cost)}, ${compact.format(cell.tokens)} tokens`;
+}
+
+function showTooltip(cell: HeatmapCell, target: HTMLElement): void {
+  const tip = byId<HTMLDivElement>("heatmap-tooltip");
+  tip.innerHTML = tooltipHtml(cell);
+  tip.hidden = false;
+  const anchor = target.getBoundingClientRect();
+  const tipRect = tip.getBoundingClientRect();
+  const left = Math.max(
+    8,
+    Math.min(
+      anchor.left + anchor.width / 2 - tipRect.width / 2,
+      window.innerWidth - tipRect.width - 8,
+    ),
+  );
+  const above = anchor.top - tipRect.height - 8;
+  const top = above < 8 ? anchor.bottom + 8 : above; // flip below when there's no room above
+  tip.style.left = `${left}px`;
+  tip.style.top = `${top}px`;
+}
+
+function hideTooltip(): void {
+  byId<HTMLDivElement>("heatmap-tooltip").hidden = true;
+}
+
+function drawHeatmap(series: HeatmapSeries): void {
+  heatmapCells = series.cells;
+  const grid = byId<HTMLDivElement>("heatmap-grid");
+  const months = byId<HTMLDivElement>("heatmap-months");
+  grid.replaceChildren();
+  months.replaceChildren();
+  if (series.cells.length === 0) {
+    return;
+  }
+
+  const levelOf = levelForCost(series.cells.map((cell) => cell.cost));
+  const leading = weekdayOf(series.cells[0].date); // blanks before the first day's weekday row
+  const columns = Math.ceil((leading + series.cells.length) / 7);
+  months.style.setProperty("--cols", String(columns));
+
+  for (let blank = 0; blank < leading; blank++) {
+    const filler = document.createElement("div");
+    filler.className = "heatmap-cell is-blank";
+    grid.appendChild(filler);
+  }
+
+  let priorMonth = "";
+  series.cells.forEach((cell, index) => {
+    const element = document.createElement("div");
+    element.className = "heatmap-cell";
+    element.dataset.level = String(levelOf(cell.cost));
+    element.dataset.index = String(index);
+    element.setAttribute("role", "gridcell");
+    element.setAttribute("aria-label", cellAriaLabel(cell));
+    element.tabIndex = 0;
+    grid.appendChild(element);
+
+    const month = cell.date.slice(0, 7);
+    if (month !== priorMonth) {
+      priorMonth = month;
+      const label = document.createElement("span");
+      label.className = "heatmap-month";
+      label.textContent = MONTH_NAMES[Number(cell.date.slice(5, 7)) - 1];
+      label.style.gridColumnStart = String(Math.floor((leading + index) / 7) + 1);
+      months.appendChild(label);
+    }
+  });
+}
+
+function wireHeatmapHover(): void {
+  const grid = byId<HTMLDivElement>("heatmap-grid");
+  const onEnter = (event: Event) => {
+    const target = (event.target as HTMLElement).closest<HTMLElement>(
+      ".heatmap-cell:not(.is-blank)",
+    );
+    if (!target || target.dataset.index === undefined) {
+      hideTooltip();
+      return;
+    }
+    showTooltip(heatmapCells[Number(target.dataset.index)], target);
+  };
+  grid.addEventListener("mouseover", onEnter);
+  grid.addEventListener("focusin", onEnter);
+  grid.addEventListener("mouseleave", hideTooltip);
+  grid.addEventListener("focusout", hideTooltip);
+}
+
 async function refresh(): Promise<void> {
   const error = byId<HTMLParagraphElement>("error");
   const empty = byId<HTMLParagraphElement>("empty");
   const canvas = byId<HTMLCanvasElement>("chart");
+  const heatmap = byId<HTMLDivElement>("heatmap");
+  // Any pending heatmap tooltip is stale across a view/range change (the hovered
+  // cell may be hidden or replaced without ever firing mouseleave) — clear it.
+  hideTooltip();
   try {
+    if (view === "heatmap") {
+      const series = await window.burnbar.getHeatmap({ range });
+      byId("total-label").textContent = RANGE_LABELS[series.range];
+      byId("total-value").textContent = usd.format(series.totalCost);
+
+      const hasData = series.cells.some((cell) => cell.cost > 0);
+      error.hidden = true;
+      empty.hidden = hasData;
+      canvas.hidden = true;
+      heatmap.hidden = !hasData;
+      if (hasData) {
+        drawHeatmap(series);
+      }
+      return;
+    }
+
     const series = await window.burnbar.getSeries({ range, dimension });
     byId("total-label").textContent = RANGE_LABELS[series.range];
     byId("total-value").textContent = usd.format(series.totalCost);
@@ -173,6 +382,7 @@ async function refresh(): Promise<void> {
     const hasData = series.datasets.some((dataset) => dataset.data.some((value) => value > 0));
     error.hidden = true;
     empty.hidden = hasData;
+    heatmap.hidden = true;
     canvas.hidden = !hasData;
     if (hasData) {
       draw(series);
@@ -181,6 +391,7 @@ async function refresh(): Promise<void> {
     error.hidden = false;
     empty.hidden = true;
     canvas.hidden = true;
+    heatmap.hidden = true;
     error.textContent = `Could not load usage: ${cause instanceof Error ? cause.message : String(cause)}`;
   }
 }
@@ -254,6 +465,16 @@ function wireControls(): void {
     setControlState();
     void refresh();
   });
+  byId("view").addEventListener("click", (event) => {
+    const target = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-view]");
+    if (!target) {
+      return;
+    }
+    view = target.dataset.view as View;
+    setControlState();
+    void refresh();
+  });
+  wireHeatmapHover();
   byId("export-json").addEventListener("click", () => void exportJson());
   byId("export-csv").addEventListener("click", () => void exportCsv());
 }

@@ -8,9 +8,10 @@ Pure read-time projection: turns archive records ([`DailyRecord[]`](../../src/ty
 
 | Export | Type | File |
 |--------|------|------|
-| `deriveSeries()` | `(daily, sessions, options) => DashboardSeries` | [derive.ts:125](../../src/derive.ts#L125) |
+| `deriveSeries()` | `(daily, sessions, options) => DashboardSeries` | [derive.ts#deriveSeries](../../src/derive.ts) |
+| `deriveHeatmap()` | `(daily, sessions, options) => HeatmapSeries` | [derive.ts#deriveHeatmap](../../src/derive.ts) |
 
-`options` is `{ range, dimension, timezone, today }`. The axis/window helpers (`shiftDate`, `rangeStart`, `dateAxis`, `sessionLocalDate`) and the three per-dimension builders (`costByDate`, `costByModel`, `costByAgent`) are module-private. — [derive.ts:21-123](../../src/derive.ts#L21-L123)
+`deriveSeries` options are `{ range, dimension, timezone, today }`; `deriveHeatmap` options are `{ range, timezone, today }` (no dimension — the heatmap is always keyed to total cost). The axis/window helpers (`shiftDate`, `rangeStart`, `dateAxis`, `sessionLocalDate`), the three per-dimension series builders (`costByDate`, `costByModel`, `costByAgent`), and the heatmap's `breakdownByCost` are module-private. — [derive.ts](../../src/derive.ts)
 
 ## Responsibilities
 
@@ -21,6 +22,7 @@ Pure read-time projection: turns archive records ([`DailyRecord[]`](../../src/ty
 - Bucket each session to its **local last-activity day** for the by-agent view (the documented approximation). — [derive.ts:87-122](../../src/derive.ts#L87-L122)
 - Zero-fill every axis index with no data, so stacked datasets stay index-aligned. — [derive.ts:61-62,81-82,120-121](../../src/derive.ts#L61-L62)
 - Sum `totalCost` across the visible datasets. — [derive.ts:152-155](../../src/derive.ts#L152-L155)
+- **Heatmap** (`deriveHeatmap`): project the same continuous, zero-filled axis into one `HeatmapCell` per day — the authoritative daily `cost`/`tokens` plus a cost-descending per-**model** split (from the daily record) and per-**agent** split (summed from sessions, sharing the by-agent day-boundary approximation) for the hover detail. — [derive.ts#deriveHeatmap](../../src/derive.ts)
 
 ## Non-Goals
 
@@ -67,6 +69,7 @@ flowchart LR
 ## Extension Points
 
 - **New breakdown dimension**: add a `SeriesDimension` value, a `costBy…` builder returning `SeriesDataset[]` (populating both `data` and `tokens`), and a branch in `deriveSeries`. — [derive.ts:143-150](../../src/derive.ts#L143-L150)
+- **More per-cell heatmap detail**: extend `HeatmapCell` (and `HeatmapBreakdownEntry`) in [types.ts](../../src/types.ts), then populate it in `deriveHeatmap` alongside `models`/`agents`. — [derive.ts#deriveHeatmap](../../src/derive.ts)
 - **New range**: add to `SeriesRange` + `RANGE_DAYS` (or special-case in `rangeStart`). — [derive.ts:16-38](../../src/derive.ts#L16-L38)
 - **More per-point detail** in the tooltip: add a parallel array to `SeriesDataset` and populate it in each builder alongside `data`/`tokens`. — [types.ts:143-148](../../src/types.ts#L143-L148)
 

@@ -1,16 +1,19 @@
 import { ipcMain } from "electron";
-import { deriveSeries } from "./derive.js";
+import { deriveHeatmap, deriveSeries } from "./derive.js";
 import { localDateString } from "./time.js";
 import type { ArchiveStore } from "./store.js";
 import type {
   DashboardSeries,
   ExportData,
+  HeatmapRequest,
+  HeatmapSeries,
   SeriesDimension,
   SeriesRange,
   SeriesRequest,
 } from "./types.js";
 
 export const SERIES_CHANNEL = "archive:get-series";
+export const HEATMAP_CHANNEL = "archive:get-heatmap";
 export const EXPORT_CHANNEL = "archive:export";
 
 const RANGES = new Set<string>(["30d", "90d", "all"]);
@@ -30,6 +33,15 @@ export function registerArchiveIpc(store: ArchiveStore, timezone: string): void 
     const [daily, sessions] = await Promise.all([store.readAllDaily(), store.readAllSessions()]);
     const today = localDateString(timezone);
     return deriveSeries(daily, sessions, { range, dimension, timezone, today });
+  });
+
+  ipcMain.handle(HEATMAP_CHANNEL, async (_event, raw: unknown): Promise<HeatmapSeries> => {
+    const request = (raw ?? {}) as Partial<HeatmapRequest>;
+    const range: SeriesRange = request.range && RANGES.has(request.range) ? request.range : "all";
+
+    const [daily, sessions] = await Promise.all([store.readAllDaily(), store.readAllSessions()]);
+    const today = localDateString(timezone);
+    return deriveHeatmap(daily, sessions, { range, timezone, today });
   });
 
   ipcMain.handle(EXPORT_CHANNEL, async (): Promise<ExportData> => {
