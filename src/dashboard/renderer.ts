@@ -201,33 +201,27 @@ function weekdayOf(iso: string): number {
 
 /**
  * Build a cost → intensity level (0 = no spend, 1–4 = ascending) from the day
- * costs. Buckets split the *positive* costs by quartile so a single outlier day
- * can't wash the rest of the grid out to near-empty (a linear ramp would).
+ * costs. Buckets a day by the **rank** (quartile) of its cost among the positive
+ * days, so a single outlier day can't wash the rest of the grid out to near-empty
+ * (a linear ramp would) *and* the busiest day always reaches the top level — even
+ * with only a handful of active days, where fixed quantile cut-points would leave
+ * the max stuck a step below.
  */
 function levelForCost(costs: number[]): (cost: number) => number {
   const positive = costs.filter((cost) => cost > 0).sort((a, b) => a - b);
-  if (positive.length === 0) {
+  const total = positive.length;
+  if (total === 0) {
     return () => 0;
   }
-  const quantile = (p: number) =>
-    positive[Math.min(positive.length - 1, Math.floor(p * positive.length))];
-  const q1 = quantile(0.25);
-  const q2 = quantile(0.5);
-  const q3 = quantile(0.75);
   return (cost) => {
     if (cost <= 0) {
       return 0;
     }
-    if (cost <= q1) {
-      return 1;
-    }
-    if (cost <= q2) {
-      return 2;
-    }
-    if (cost <= q3) {
-      return 3;
-    }
-    return 4;
+    // rank = how many positive days cost no more than this one (1…total), so the
+    // max day is rank `total` → level 4; ties share a rank, hence a level.
+    const firstAbove = positive.findIndex((value) => value > cost);
+    const rank = firstAbove === -1 ? total : firstAbove;
+    return Math.min(4, Math.ceil((rank / total) * 4));
   };
 }
 
@@ -361,6 +355,9 @@ async function refresh(): Promise<void> {
   const empty = byId<HTMLParagraphElement>("empty");
   const canvas = byId<HTMLCanvasElement>("chart");
   const heatmap = byId<HTMLDivElement>("heatmap");
+  // Any pending heatmap tooltip is stale across a view/range change (the hovered
+  // cell may be hidden or replaced without ever firing mouseleave) — clear it.
+  hideTooltip();
   try {
     if (view === "heatmap") {
       const series = await window.burnbar.getHeatmap({ range });
