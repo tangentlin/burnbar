@@ -52,9 +52,7 @@ export class SettingsStore {
   }
 
   async setRefreshIntervalMinutes(minutes: number): Promise<AppSettings> {
-    this.settings = { ...this.settings, refreshIntervalMinutes: sanitizeMinutes(minutes) };
-    await atomicWriteJson(this.filePath, this.settings);
-    return this.settings;
+    return this.persist({ refreshIntervalMinutes: sanitizeMinutes(minutes) });
   }
 
   /** The app version recorded at the previous launch (undefined on first run). */
@@ -63,7 +61,12 @@ export class SettingsStore {
   }
 
   async setLastRunVersion(version: string): Promise<AppSettings> {
-    this.settings = { ...this.settings, lastRunVersion: version };
+    return this.persist({ lastRunVersion: version });
+  }
+
+  /** Merge a patch into the in-memory settings and atomically persist the result. */
+  private async persist(patch: Partial<AppSettings>): Promise<AppSettings> {
+    this.settings = { ...this.settings, ...patch };
     await atomicWriteJson(this.filePath, this.settings);
     return this.settings;
   }

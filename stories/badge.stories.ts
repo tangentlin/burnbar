@@ -47,16 +47,19 @@ async function loadBaseBitmap(): Promise<{ data: Uint8Array; width: number; heig
   return { data: new Uint8Array(data.buffer.slice(0)), width, height };
 }
 
+/** Un-premultiply one channel by its pixel's alpha (0–255) for canvas display. */
+function unpremultiply(value: number, alpha: number): number {
+  return alpha === 0 ? 0 : Math.min(255, Math.round((value * 255) / alpha));
+}
+
 /** Premultiplied-BGRA (compositor output) → straight-RGBA canvas, scaled up crisp. */
 function bitmapToCanvas(out: Uint8Array, width: number, height: number): HTMLCanvasElement {
   const rgba = new Uint8ClampedArray(width * height * 4);
   for (let i = 0; i < width * height; i++) {
     const alpha = out[i * 4 + 3];
-    const straight = (value: number) =>
-      alpha === 0 ? 0 : Math.min(255, Math.round((value * 255) / alpha));
-    rgba[i * 4] = straight(out[i * 4 + 2]); // R (from BGRA index 2)
-    rgba[i * 4 + 1] = straight(out[i * 4 + 1]); // G
-    rgba[i * 4 + 2] = straight(out[i * 4]); // B (from BGRA index 0)
+    rgba[i * 4] = unpremultiply(out[i * 4 + 2], alpha); // R (from BGRA index 2)
+    rgba[i * 4 + 1] = unpremultiply(out[i * 4 + 1], alpha); // G
+    rgba[i * 4 + 2] = unpremultiply(out[i * 4], alpha); // B (from BGRA index 0)
     rgba[i * 4 + 3] = alpha;
   }
   const src = document.createElement("canvas");

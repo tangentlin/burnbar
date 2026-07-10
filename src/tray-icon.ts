@@ -31,14 +31,7 @@ export const BADGE_RGB: Record<UpdateBadge, readonly [number, number, number]> =
 
 /** Map the update lifecycle to a badge, or null for states needing no attention. */
 export function badgeForStatus(status: UpdateStatus): UpdateBadge | null {
-  switch (status) {
-    case "available":
-      return "available";
-    case "downloaded":
-      return "downloaded";
-    default:
-      return null;
-  }
+  return status === "available" || status === "downloaded" ? status : null;
 }
 
 // Badge geometry as fractions of the icon's device width, so it scales with the

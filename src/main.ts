@@ -8,6 +8,7 @@ import { SettingsStore } from "./settings.js";
 import { ArchiveStore } from "./store.js";
 import { systemTimezone } from "./time.js";
 import { TrayManager } from "./tray.js";
+import { upgradedVersion } from "./update-notification-content.js";
 import { UpdateNotifier } from "./update-notifier.js";
 import { UpdateService } from "./update-service.js";
 import { DashboardWindow } from "./window.js";
@@ -41,12 +42,15 @@ app.whenReady().then(async () => {
 
   // Detect an install that happened since the previous launch (the app relaunches
   // itself onto the new version) so we can confirm it once, then record the
-  // running version for next time. Best-effort: a persistence failure is logged.
+  // running version for next time — only when it changed, so an unchanged launch
+  // doesn't rewrite settings.json. Best-effort: a persistence failure is logged.
   const currentVersion = app.getVersion();
   const previousVersion = settings.getLastRunVersion();
-  settings.setLastRunVersion(currentVersion).catch((error: unknown) => {
-    logger.log("error", "Failed to persist last-run version", error);
-  });
+  if (previousVersion !== currentVersion) {
+    settings.setLastRunVersion(currentVersion).catch((error: unknown) => {
+      logger.log("error", "Failed to persist last-run version", error);
+    });
+  }
 
   const service = new CaptureService({
     store,
@@ -116,8 +120,9 @@ app.whenReady().then(async () => {
   });
 
   // A changed version means the previous launch's update was just installed.
-  if (previousVersion && previousVersion !== currentVersion) {
-    updateNotifier.announceInstalled(currentVersion);
+  const upgradedTo = upgradedVersion(previousVersion, currentVersion);
+  if (upgradedTo) {
+    updateNotifier.announceInstalled(upgradedTo);
   }
 
   await service.start();

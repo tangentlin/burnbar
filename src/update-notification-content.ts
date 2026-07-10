@@ -43,3 +43,13 @@ export function installedNotificationContent(version: string): NotificationConte
     body: `You’re now running version ${version}.`,
   };
 }
+
+/**
+ * The version to confirm after a relaunch, or `null` when this isn't a fresh
+ * upgrade — i.e. the first run ever (no recorded previous version) or the same
+ * version simply restarting. Keeps the "did we just update?" rule pure and
+ * testable instead of inline in the app's composition root.
+ */
+export function upgradedVersion(previous: string | undefined, current: string): string | null {
+  return previous !== undefined && previous !== current ? current : null;
+}
