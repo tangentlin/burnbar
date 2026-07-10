@@ -15,6 +15,7 @@
 | `UpdateService` | electron-updater lifecycle (check/download/install) feeding the tray's update row | [update-service.ts](../src/update-service.ts) |
 | `UpdateNotifier` | OS notifications on the actionable update transitions + post-restart confirmation | [update-notifier.ts](../src/update-notifier.ts) |
 | `pnpm build:renderer` | esbuild-bundle both browser renderers — the dashboard (+ Chart.js) and the menu card | [scripts/build-renderer.mjs](../scripts/build-renderer.mjs) |
+| `pnpm storybook` | Preview browser-representable states (the update badge + notification copy) in isolation, no app launch | [.storybook/](../.storybook/), [stories/](../stories/), [storybook.md](./storybook.md) |
 | `electron-builder` config | Packaging / signing / notarization / GitHub-Releases publish (electron-updater feed) | [electron-builder.config.cjs](../electron-builder.config.cjs) |
 
 ## Composition Overview

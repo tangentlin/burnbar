@@ -4,8 +4,8 @@ import type { UpdateStatus } from "../src/types.js";
 
 // Build a solid-alpha BGRA bitmap (black glyph, fully opaque) to exercise the
 // recolor + badge stamp deterministically.
-function opaqueBlack(width: number, height: number): Buffer {
-  const buf = Buffer.alloc(width * height * 4);
+function opaqueBlack(width: number, height: number): Uint8Array {
+  const buf = new Uint8Array(width * height * 4);
   for (let i = 0; i < width * height; i++) {
     buf[i * 4 + 3] = 255; // alpha only; RGB stays 0 (black glyph)
   }
@@ -13,7 +13,7 @@ function opaqueBlack(width: number, height: number): Buffer {
 }
 
 const pixel = (
-  buf: Buffer,
+  buf: Uint8Array,
   x: number,
   y: number,
   width: number,
@@ -47,7 +47,7 @@ describe("composeBadgedIconBitmap", () => {
   });
 
   it("scales the recolor by the source alpha (premultiplied)", () => {
-    const base = Buffer.alloc(W * H * 4);
+    const base = new Uint8Array(W * H * 4);
     base[3] = 128; // pixel (0,0): half-transparent black
     const out = composeBadgedIconBitmap(base, W, H, "dark", "available");
     const value = Math.round((255 * 128) / 255);
@@ -81,6 +81,6 @@ describe("composeBadgedIconBitmap", () => {
   });
 
   it("throws when the bitmap length does not match the dimensions", () => {
-    expect(() => composeBadgedIconBitmap(Buffer.alloc(4), W, H, "dark", "available")).toThrow();
+    expect(() => composeBadgedIconBitmap(new Uint8Array(4), W, H, "dark", "available")).toThrow();
   });
 });

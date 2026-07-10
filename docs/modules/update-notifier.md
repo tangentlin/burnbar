@@ -8,11 +8,12 @@ Turns the [UpdateService](./update-service.md)'s state transitions into macOS **
 
 | Export | Type | File |
 |--------|------|------|
-| `UpdateNotifier` | class — constructed with `(onDownload, logger?)` | [update-notifier.ts](../../src/update-notifier.ts) |
+| `UpdateNotifier` | class — constructed with `(onDownload, { logger?, present? })` | [update-notifier.ts](../../src/update-notifier.ts) |
 | `UpdateNotifier.handle(state)` | `(UpdateState) => void` — notify once on a transition | [update-notifier.ts](../../src/update-notifier.ts) |
 | `UpdateNotifier.announceInstalled(version)` | `(string) => void` — post-restart confirmation | [update-notifier.ts](../../src/update-notifier.ts) |
+| `NotificationSpec` / `NotificationPresenter` | the injectable "show a notification" seam | [update-notifier.ts](../../src/update-notifier.ts) |
 
-Module-private: `show()` (the guarded, best-effort `Notification` wrapper) and the `lastStatus` transition latch.
+Module-private: `presentViaElectron()` (the default, guarded, best-effort `Notification` presenter, reached through a **deferred** `require("electron")` so importing this module never loads Electron) and the `lastStatus` transition latch. The user-facing copy lives in the pure, browser-safe [update-notification-content.ts](../../src/update-notification-content.ts) (`updateNotificationContent` / `installedNotificationContent`), shared verbatim with the [Storybook](../storybook.md) notification story.
 
 ## Responsibilities
 
@@ -20,6 +21,7 @@ Module-private: `show()` (the guarded, best-effort `Notification` wrapper) and t
 - Wire the notifications per the "download auto, restart passive" decision: the `available` notification's click calls the injected `onDownload` (consent to download — nothing installs); the `downloaded` notification is informational only.
 - Expose `announceInstalled()` for `main.ts`'s one-time post-restart confirmation.
 - Stay best-effort: guard on `Notification.isSupported()` and swallow-and-log any failure — never throw.
+- Keep the OS out of the way of tests: the `present` seam is injectable, so [test/update-notifier.test.ts](../../test/update-notifier.test.ts) asserts the transition/click logic with a fake presenter, and the deferred Electron require means importing the module never needs the Electron binary.
 
 ## Non-Goals
 
@@ -47,6 +49,7 @@ Module-private: `show()` (the guarded, best-effort `Notification` wrapper) and t
 ## Related Files
 
 - [update-service.ts](../../src/update-service.ts) → [update-service.md](./update-service.md) — produces the `UpdateState` the notifier reacts to.
+- [update-notification-content.ts](../../src/update-notification-content.ts) — the pure copy shared with the Storybook story.
 - [tray.ts](../../src/tray.ts) → [tray.md](./tray.md) — the companion icon badge for the same transitions.
 - [main.ts](../../src/main.ts) → [main.md](./main.md) — constructs the notifier, fans out `onState`, and drives the post-restart confirmation.
-- Feature: [auto-update.md](../features/auto-update.md); decision: [adr/011](../adr/011-auto-update-mechanism.md).
+- Feature: [auto-update.md](../features/auto-update.md); decision: [adr/011](../adr/011-auto-update-mechanism.md); previewing: [storybook.md](../storybook.md).

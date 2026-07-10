@@ -57,7 +57,7 @@ app.whenReady().then(async () => {
   const updates = new UpdateService({ logger });
   // Clicking the "available" notification consents to the download; "downloaded"
   // is passive (restart stays the tray's sole quitAndInstall click) — see ADR-011.
-  const updateNotifier = new UpdateNotifier(() => void updates.downloadUpdate(), logger);
+  const updateNotifier = new UpdateNotifier(() => void updates.downloadUpdate(), { logger });
   const dashboard = new DashboardWindow();
   const menuCard = new MenuCardRenderer();
   const tray = new TrayManager(

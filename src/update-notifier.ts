@@ -1,6 +1,35 @@
-import { Notification } from "electron";
+import { createRequire } from "node:module";
 import type { BurnbarLogger } from "./logger.js";
+import {
+  installedNotificationContent,
+  updateNotificationContent,
+} from "./update-notification-content.js";
 import type { UpdateState, UpdateStatus } from "./types.js";
+
+// electron ships as a native module; createRequire defers loading it (mirrors
+// update-service.ts's electron-updater interop) so merely importing this module
+// — e.g. from a unit test or a browser story that only wants the copy — never
+// pulls Electron in. Only the default presenter, when actually shown, requires it.
+const require = createRequire(import.meta.url);
+
+/** One notification to present: its copy plus an optional click action. */
+export type NotificationSpec = {
+  title: string;
+  body: string;
+  onClick?: () => void;
+};
+
+/**
+ * The seam that actually surfaces a notification. Defaults to the macOS
+ * `Notification`; a test injects a fake to assert the notifier's logic (which
+ * transitions fire, click wiring) without the OS.
+ */
+export type NotificationPresenter = (spec: NotificationSpec) => void;
+
+export type UpdateNotifierOptions = {
+  logger?: BurnbarLogger;
+  present?: NotificationPresenter;
+};
 
 /**
  * Surfaces the update states that need a user action as macOS notifications, so
@@ -10,20 +39,25 @@ import type { UpdateState, UpdateStatus } from "./types.js";
  *
  * Fires only on the *transition into* a state (tracked via `lastStatus`), so a
  * repeated push of the same state never re-notifies. Per the "download auto,
- * restart passive" decision, clicking the "available" notification starts the
- * download; the "downloaded" notification is informational only — restart stays
- * the tray's single `quitAndInstall()` call site (ADR-011).
+ * restart passive" decision, the "available" notification is clickable (starts
+ * the download); the "downloaded" one is informational only — restart stays the
+ * tray's single `quitAndInstall()` call site (ADR-011).
  *
  * Best-effort throughout: a notification failure is logged, never thrown — the
  * same never-interrupt posture as the rest of the update path.
  */
 export class UpdateNotifier {
   private lastStatus: UpdateStatus | null = null;
+  private readonly logger: BurnbarLogger | undefined;
+  private readonly present: NotificationPresenter;
 
   constructor(
     private readonly onDownload: () => void,
-    private readonly logger?: BurnbarLogger,
-  ) {}
+    options: UpdateNotifierOptions = {},
+  ) {
+    this.logger = options.logger;
+    this.present = options.present ?? ((spec) => this.presentViaElectron(spec));
+  }
 
   /** React to a pushed {@link UpdateState}, notifying once on entering a state. */
   handle(state: UpdateState): void {
@@ -32,40 +66,30 @@ export class UpdateNotifier {
     if (state.status === previous) {
       return;
     }
-
-    const version = state.version ?? "";
-    if (state.status === "available") {
-      this.show({
-        title: "Burnbar update available",
-        body: version
-          ? `Version ${version} is ready to download. Click to download.`
-          : "A new version is ready to download. Click to download.",
-        onClick: this.onDownload,
-      });
-    } else if (state.status === "downloaded") {
-      this.show({
-        title: "Burnbar update ready to install",
-        body: `${version ? `Version ${version} is` : "An update is"} ready — open Burnbar in the menu bar and choose “Restart to Update.”`,
-      });
+    const content = updateNotificationContent(state);
+    if (!content) {
+      return;
     }
+    // Only the "available" notification acts on click — it consents to the
+    // download; "downloaded" is passive so a restart stays the tray's job.
+    const onClick = state.status === "available" ? this.onDownload : undefined;
+    this.present({ ...content, onClick });
   }
 
   /** One-time confirmation shown after relaunching onto a newly installed version. */
   announceInstalled(version: string): void {
-    this.show({
-      title: "Burnbar updated",
-      body: `You’re now running version ${version}.`,
-    });
+    this.present(installedNotificationContent(version));
   }
 
-  private show(options: { title: string; body: string; onClick?: () => void }): void {
+  private presentViaElectron(spec: NotificationSpec): void {
     try {
+      const { Notification } = require("electron") as typeof import("electron");
       if (!Notification.isSupported()) {
         return;
       }
-      const notification = new Notification({ title: options.title, body: options.body });
-      if (options.onClick) {
-        notification.on("click", options.onClick);
+      const notification = new Notification({ title: spec.title, body: spec.body });
+      if (spec.onClick) {
+        notification.on("click", spec.onClick);
       }
       notification.show();
     } catch (error) {

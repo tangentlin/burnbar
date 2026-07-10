@@ -1,11 +1,12 @@
 import type { UpdateStatus } from "./types.js";
 
-// Pure compositor for the tray icon's update badge. Kept Electron-free (operates
-// on raw bitmap buffers) so the pixel math is unit-testable without a real
-// NativeImage — the tray (tray.ts) supplies `templateIcon.toBitmap()` and wraps
-// the result back with `nativeImage.createFromBitmap()`. See ADR-011's
-// attention-cues amendment for why a badge exists and ADR-004 for why the
-// default icon stays a macOS template image.
+// Pure compositor for the tray icon's update badge. Kept Electron-free — and
+// working on plain `Uint8Array`s rather than Node `Buffer`s — so the exact same
+// function runs both in the main process (tray.ts feeds `templateIcon.toBitmap()`
+// and wraps the result with `nativeImage.createFromBitmap()`) and in the browser
+// (the Storybook badge story paints it to a canvas). See ADR-011's attention-cues
+// amendment for why a badge exists and ADR-004 for why the default icon stays a
+// macOS template image.
 
 /** Which menu-bar appearance a badged icon is being composited for. */
 export type IconAppearance = "light" | "dark";
@@ -50,7 +51,7 @@ const GAP_FRACTION = 0.05;
  * recolor the glyph to the menu foreground (white on a dark bar, black on a light
  * one) and stamp a colored status dot in the bottom-right corner.
  *
- * Buffers are premultiplied BGRA — Electron's `nativeImage` bitmap format on
+ * Pixels are premultiplied BGRA — Electron's `nativeImage` bitmap format on
  * macOS. Recoloring reads only the source **alpha** (byte 3) and writes a solid
  * gray, so it's independent of RGB channel order; the dot is written in BGRA.
  *
@@ -59,18 +60,18 @@ const GAP_FRACTION = 0.05;
  * template icon rather than showing a corrupt image).
  */
 export function composeBadgedIconBitmap(
-  base: Buffer,
+  base: Uint8Array,
   width: number,
   height: number,
   appearance: IconAppearance,
   badge: UpdateBadge,
-): Buffer {
+): Uint8Array {
   const expected = width * height * 4;
   if (base.length !== expected) {
     throw new Error(`bitmap length ${base.length} does not match ${width}×${height} (${expected})`);
   }
 
-  const out = Buffer.alloc(expected);
+  const out = new Uint8Array(expected);
 
   // 1) Recolor the glyph: premultiplied solid foreground, keyed to source alpha.
   const foreground = appearance === "dark" ? 255 : 0;

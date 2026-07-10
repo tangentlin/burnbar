@@ -67,3 +67,7 @@ The original decision put the update state solely on **one menu row inside a clo
 - (+) The two required actions are now discoverable without opening the menu — the icon badge is always visible and the notification actively surfaces the transition.
 - (−) Notifications are a second UI surface and may trigger a first-run macOS permission prompt (the tradeoff the original ADR declined). Scoped to the two actionable transitions + one post-update confirmation, once each — no repeats, no error noise — to stay within the "never nag" posture.
 - (−) The default tray icon stays a template, but the *badged* variant is a runtime-composited non-template image, so its light/dark correctness is handled in code (keyed off `nativeTheme`) rather than by macOS auto-tinting.
+
+### Verifying the cues without launching the app
+
+Both cues are browser-representable, so they can be reviewed in isolation without a Mac build-and-launch: the badge compositor is pure (`Uint8Array` in/out) and the notification copy is a pure module, both exercised in [Storybook](../storybook.md) (`pnpm storybook`). The badge story runs the *real* compositor against the committed template; the notification story renders the *real* copy strings as mock banners. What Storybook can't reproduce — the live menu-bar image and OS notification delivery, and the true macOS BGRA channel order — still needs `pnpm dev` on macOS; the notifier's transition/click **logic** is covered by a unit test through its injectable presenter.

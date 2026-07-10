@@ -8,6 +8,7 @@
 | [DOMAIN.md](./DOMAIN.md) | Vocabulary, entities, invariants, business rules, edge cases |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Structure, composition, data flow, design decisions |
 | [functional-spec/PRODUCT.md](./functional-spec/PRODUCT.md) | Implementation-agnostic product spec |
+| [storybook.md](./storybook.md) | Preview the update badge / notification states in isolation (no app launch) |
 
 ## Modules
 
@@ -29,7 +30,8 @@
 | [menu-card-window](./modules/menu-card-window.md) | `MenuCardRenderer` — hidden window rasterizing the tray stats card |
 | [menu-card](./modules/menu-card.md) | Canvas 2D card renderer (esbuild bundle) |
 | [update-service](./modules/update-service.md) | `UpdateService` — electron-updater lifecycle feeding the tray's update row |
-| [update-notifier](./modules/update-notifier.md) | `UpdateNotifier` — OS notifications on actionable update transitions |
+| [update-notifier](./modules/update-notifier.md) | `UpdateNotifier` — OS notifications on actionable update transitions (injectable presenter) |
+| update-notification-content | Pure, browser-safe notification copy shared by the notifier + Storybook — [update-notifier.md](./modules/update-notifier.md) |
 | [types](./modules/types.md) | Shared contracts: usage, ccusage raw, archive records, series |
 | [icon-pipeline](./modules/icon-pipeline.md) | SVG → PNG icon generation (`pnpm icon`) |
 | [packaging](./modules/packaging.md) | electron-builder config, signing, notarization, entitlements |

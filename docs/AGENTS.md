@@ -29,6 +29,7 @@
 | Package / sign / notarize / publish | [modules/packaging.md](./modules/packaging.md), [features/release-distribution.md](./features/release-distribution.md) |
 | Change update check/download/install behavior | [features/auto-update.md](./features/auto-update.md) → [src/update-service.ts](../src/update-service.ts) + [adr/011](./adr/011-auto-update-mechanism.md) |
 | Change the update attention cues (icon badge / notifications) | [features/auto-update.md](./features/auto-update.md) → [src/tray-icon.ts](../src/tray-icon.ts) (badge) + [src/update-notifier.ts](../src/update-notifier.ts) (notifications) + [adr/011 amendment](./adr/011-auto-update-mechanism.md#amendment-attention-cues-2026-07) |
+| Preview the badge / notification states without launching the app | [storybook.md](./storybook.md) → [stories/](../stories/) + `pnpm storybook` |
 | Know WHY a non-obvious choice was made | [adr/](./adr/) |
 
 ## Fresh Repo Tree
@@ -51,6 +52,7 @@ bash /Users/tangent/.claude/skills/doc-gen/repo-tree.sh /Users/tangent/programmi
 | Typecheck (main + dashboard configs) | `pnpm typecheck` |
 | Unit tests (Vitest) | `pnpm test` |
 | Tests (watch / coverage) | `pnpm test:watch` / `pnpm test:coverage` |
+| Preview UI states (Storybook) | `pnpm storybook` (dev) / `pnpm build-storybook` (static) — see [storybook.md](./storybook.md) |
 | Lint + format check | `pnpm check` |
 | Auto-fix lint + format | `pnpm check:fix` |
 | Regenerate icons | `pnpm icon` |
@@ -76,6 +78,8 @@ This is unrelated to the `ELECTRON_RUN_AS_NODE` that [src/capture.ts](../src/cap
 | `src/preload.mts` | ESM preload | `.mts` → `dist/preload.mjs` (Electron 42 ESM-preload requirement). |
 | `test/` | Vitest unit tests + JSON fixtures | Pure logic only (merge/normalize/derive/atomic IO); ccusage mocked via the injected runner. |
 | `scripts/` | Build-time Node scripts (`.mjs`) | ESM; resolve paths via `import.meta.url`. |
+| `.storybook/` | Storybook config (HTML + Vite) | Framework-free; telemetry off. — [storybook.md](./storybook.md) |
+| `stories/` | Storybook stories (`*.stories.ts`) | Outside `src/` so `tsc` ignores them; import the **real** pure modules, extension-less. |
 | `assets/` | Icon sources + generated PNGs | SVGs are source of truth; PNGs generated, committed. |
 | `build/` | Packaging inputs | `entitlements.mac.plist`, `icons/icon.png`. |
 | `dist/` | `tsc` + esbuild output | Git-ignored. Includes `dist/dashboard/**`, `dist/menu-card/**`, and `dist/preload.mjs`. |
@@ -132,7 +136,7 @@ This is unrelated to the `ELECTRON_RUN_AS_NODE` that [src/capture.ts](../src/cap
 ### Change the auto-update behavior
 1. The lifecycle (check/download/install, error handling) lives in [update-service.ts](../src/update-service.ts); the fixed check cadence is `UPDATE_CHECK_INTERVAL_MINUTES` there — **not** `settings.ts`'s usage-refresh interval, which is a separate, user-configurable, manual-capable concern.
 2. The tray's single state-driven row lives in `buildUpdateItem` in [tray.ts](../src/tray.ts); wiring (`onCheckForUpdates`/`onDownloadUpdate`/`onRestartToUpdate`) is in [main.ts](../src/main.ts) — `quitAndInstall()` must only ever be reachable from the tray's explicit "Restart to Update" click.
-3. The attention cues (per [adr/011 amendment](./adr/011-auto-update-mechanism.md#amendment-attention-cues-2026-07)): the icon **badge** is composited by the pure [tray-icon.ts](../src/tray-icon.ts) and driven by `refreshTrayIcon` in [tray.ts](../src/tray.ts); the **notifications** are [update-notifier.ts](../src/update-notifier.ts), fanned out alongside the tray in [main.ts](../src/main.ts). Keep the invariant: a notification must never call `quitAndInstall()` (the "downloaded" notification is passive).
+3. The attention cues (per [adr/011 amendment](./adr/011-auto-update-mechanism.md#amendment-attention-cues-2026-07)): the icon **badge** is composited by the pure [tray-icon.ts](../src/tray-icon.ts) and driven by `refreshTrayIcon` in [tray.ts](../src/tray.ts); the **notifications** are [update-notifier.ts](../src/update-notifier.ts) (copy in the pure [update-notification-content.ts](../src/update-notification-content.ts)), fanned out alongside the tray in [main.ts](../src/main.ts). Keep the invariant: a notification must never call `quitAndInstall()` (the "downloaded" notification is passive). Preview both without launching the app via `pnpm storybook` — [storybook.md](./storybook.md).
 4. `pnpm check && pnpm typecheck && pnpm test`. Update [features/auto-update.md](./features/auto-update.md) + [modules/update-service.md](./modules/update-service.md) + [modules/update-notifier.md](./modules/update-notifier.md) + [modules/tray.md](./modules/tray.md); add/update an ADR if the mechanism itself changes (see [adr/011](./adr/011-auto-update-mechanism.md)).
 
 ## Boundaries

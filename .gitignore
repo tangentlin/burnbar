@@ -143,3 +143,6 @@ build/icons/*
 
 .DS_Store
 .env.signing
+
+# Storybook static build output
+storybook-static/

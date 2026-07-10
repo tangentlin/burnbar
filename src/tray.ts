@@ -198,7 +198,10 @@ export class TrayManager {
           appearance,
           badge,
         );
-        image = nativeImage.createFromBitmap(composed, {
+        // The compositor works on Uint8Array (so it runs in the browser too);
+        // createFromBitmap wants a Buffer — wrap the same memory, no copy.
+        const buffer = Buffer.from(composed.buffer, composed.byteOffset, composed.byteLength);
+        image = nativeImage.createFromBitmap(buffer, {
           width: deviceWidth,
           height: deviceHeight,
           scaleFactor: TRAY_ICON_SCALE,
