@@ -37,6 +37,7 @@ flowchart LR
 - For the **app icon**, `assets/burnbar.svg` is the source of truth; `build/icons/icon.png` is a generated, committed output. — [scripts/generate-icons.mjs:3-12](../../scripts/generate-icons.mjs#L3-L12)
 - The **tray** PNGs (`assets/icon.png` @1x + `assets/icon@2x.png` @2x) are the source of truth themselves — hand-authored and committed, deliberately *not* generated (per-size optical tuning a single SVG render can't reproduce).
 - `assets/icon.png` / `assets/icon@2x.png` must stay monochrome templates (consumed via `setTemplateImage(true)`). — [tray.ts](../../src/tray.ts)
+- The **update badge** does not change this: the committed asset stays a template; [tray-icon.ts](../../src/tray-icon.ts) composites a *runtime, non-template* badged variant from it only while an update is pending (recolor by alpha + colored dot), so the source asset stays monochrome. — [tray-icon.md](./tray-icon.md), [ADR-011 amendment](../adr/011-auto-update-mechanism.md#amendment-attention-cues-2026-07)
 - Output dirs are created on demand (`mkdirSync recursive`). — [scripts/generate-icons.mjs:23](../../scripts/generate-icons.mjs#L23)
 
 ## Extension Points

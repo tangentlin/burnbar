@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Persists user preferences (`settings.json` under userData) behind a tiny `SettingsStore`. Today's only setting is the auto-refresh interval; writes reuse the store's atomic temp-then-rename IO so a crash mid-save never corrupts preferences.
+Persists user preferences and a little app state (`settings.json` under userData) behind a tiny `SettingsStore`. The user-facing setting is the auto-refresh interval; it also records `lastRunVersion` (the app version seen at the previous launch) so `main.ts` can fire the one-time post-update notification. Writes reuse the store's atomic temp-then-rename IO so a crash mid-save never corrupts the file.
 
 ## Public Surface
 
@@ -15,6 +15,8 @@ Persists user preferences (`settings.json` under userData) behind a tiny `Settin
 | `SettingsStore.get()` | `() => AppSettings` | [settings.ts:42](../../src/settings.ts#L42) |
 | `SettingsStore.getRefreshIntervalMinutes()` | `() => number` | [settings.ts:46](../../src/settings.ts#L46) |
 | `SettingsStore.setRefreshIntervalMinutes()` | `(minutes) => Promise<AppSettings>` | [settings.ts:50](../../src/settings.ts#L50) |
+| `SettingsStore.getLastRunVersion()` | `() => string \| undefined` | [settings.ts](../../src/settings.ts) |
+| `SettingsStore.setLastRunVersion()` | `(version) => Promise<AppSettings>` | [settings.ts](../../src/settings.ts) |
 
 Module-private: `sanitizeMinutes` — the single coercion gate applied on every read and write. — [settings.ts:12](../../src/settings.ts#L12)
 
@@ -24,6 +26,7 @@ Module-private: `sanitizeMinutes` — the single coercion gate applied on every 
 - Load `settings.json`, coercing the parsed value through `sanitizeMinutes`; a missing or unreadable file leaves defaults in place. — [settings.ts:30-40](../../src/settings.ts#L30-L40)
 - Expose the current settings / interval for the `CaptureService` seed and tray menu. — [settings.ts:42-48](../../src/settings.ts#L42-L48)
 - Sanitize, set, and atomically persist a new interval, returning the updated settings. — [settings.ts:50-54](../../src/settings.ts#L50-L54)
+- Read/record `lastRunVersion` (an opaque version string, not coerced) for `main.ts`'s post-update notification; `load()` keeps it only when it parses as a string. — [settings.ts](../../src/settings.ts)
 
 ## Non-Goals
 
@@ -42,7 +45,7 @@ Module-private: `sanitizeMinutes` — the single coercion gate applied on every 
 
 | Type | Purpose | File |
 |------|---------|------|
-| `AppSettings` | Persisted preferences (`refreshIntervalMinutes`; `0` = manual) | [types.ts#AppSettings](../../src/types.ts#L166-L168) |
+| `AppSettings` | Persisted state (`refreshIntervalMinutes`, `0` = manual; optional `lastRunVersion`) | [types.ts#AppSettings](../../src/types.ts) |
 
 ## Invariants & Failure Modes
 

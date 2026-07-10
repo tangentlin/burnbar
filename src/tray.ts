@@ -13,12 +13,17 @@ import { fileURLToPath } from "node:url";
 import type { MenuCardRenderer } from "./menu-card-window.js";
 import { REFRESH_PRESETS_MINUTES } from "./settings.js";
 import { formatIntervalLabel, formatRelativeTime } from "./time.js";
+import { type IconAppearance, badgeForStatus, composeBadgedIconBitmap } from "./tray-icon.js";
 import type { MenuCardData, TrayState, UpdateState, UsageData } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Keep "Updated X ago" honest between data refreshes (UI-only; no ccusage call).
 const LABEL_REFRESH_MS = 60_000;
+
+// The tray icon is authored @2x (44px); badged variants are composited from that
+// representation so they stay crisp on Retina menu bars.
+const TRAY_ICON_SCALE = 2;
 
 const IDLE_UPDATE_STATE: UpdateState = {
   status: "idle",
@@ -63,6 +68,12 @@ export class TrayManager {
   // 60s label tick and unchanged re-captures reuse it instead of re-rendering.
   private cardImage: NativeImage | null = null;
   private cardSignature: string | null = null;
+  // The plain template menu-bar icon (macOS auto-tints it); the base for the
+  // badged, non-template variants and the fallback whenever no update is pending.
+  private templateIcon: NativeImage | null = null;
+  // Badged icon variants keyed by `${badge}:${appearance}` — composited once and
+  // reused (the badge only changes on an update transition or a theme switch).
+  private readonly badgedIcons = new Map<string, NativeImage>();
   // Static menu-row glyphs, rendered once and cached.
   private refreshIcon: NativeImage | null = null;
   private dashboardIcon: NativeImage | null = null;
@@ -70,8 +81,10 @@ export class TrayManager {
   private readonly spacerIcon = transparentIcon();
   // Re-render the (transparent) card when the menu switches light/dark — its data
   // signature now carries the appearance, so this just re-runs the cached render.
+  // The badged icon is appearance-specific too, so refresh it on the same switch.
   private readonly handleThemeChange = (): void => {
     void this.refreshCard(this.state);
+    this.refreshTrayIcon();
   };
 
   constructor(
@@ -98,6 +111,7 @@ export class TrayManager {
         // 1x rep is best-effort; the 2x rep already covers Retina menu bars.
       }
       icon.setTemplateImage(true);
+      this.templateIcon = icon;
       this.tray = new Tray(icon);
       if (process.platform === "darwin") {
         this.tray.setTitle("");
@@ -149,6 +163,54 @@ export class TrayManager {
   renderUpdate(state: UpdateState): void {
     this.updateState = state;
     this.rebuildMenu();
+    this.refreshTrayIcon();
+  }
+
+  /**
+   * Swap the tray image between the plain template icon and a badged, non-template
+   * variant when an update needs attention (available → blue dot, downloaded →
+   * orange dot). Best-effort: any failure falls back to the template icon so the
+   * menu bar never goes blank. See ADR-011 (attention cues) / ADR-004 (why the
+   * default icon is a template).
+   */
+  private refreshTrayIcon(): void {
+    if (!this.tray || !this.templateIcon) {
+      return;
+    }
+    const badge = badgeForStatus(this.updateState.status);
+    if (!badge) {
+      this.tray.setImage(this.templateIcon);
+      return;
+    }
+    const appearance: IconAppearance = nativeTheme.shouldUseDarkColors ? "dark" : "light";
+    const key = `${badge}:${appearance}`;
+    let image = this.badgedIcons.get(key);
+    if (!image) {
+      try {
+        const { width, height } = this.templateIcon.getSize();
+        const deviceWidth = width * TRAY_ICON_SCALE;
+        const deviceHeight = height * TRAY_ICON_SCALE;
+        const base = this.templateIcon.toBitmap({ scaleFactor: TRAY_ICON_SCALE });
+        const composed = composeBadgedIconBitmap(
+          base,
+          deviceWidth,
+          deviceHeight,
+          appearance,
+          badge,
+        );
+        image = nativeImage.createFromBitmap(composed, {
+          width: deviceWidth,
+          height: deviceHeight,
+          scaleFactor: TRAY_ICON_SCALE,
+        });
+        this.badgedIcons.set(key, image);
+      } catch (error) {
+        console.error("Failed to compose badged tray icon:", error);
+        this.tray.setImage(this.templateIcon);
+        return;
+      }
+    }
+    this.tray.setImage(image);
   }
 
   dispose(): void {

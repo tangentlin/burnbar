@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The menu-bar surface — a display-only consumer of `TrayState` **and** `UpdateState`. It owns the template icon and macOS cost title, then renders the context menu: a rich **stats card** bitmap (today + 30-day spend/tokens, a bar chart, top model) shown as a non-selectable banner, "Open Usage Dashboard…" directly beneath it, an "Updated …" relative-time stamp, Refresh Now, an Auto-Refresh radio submenu, About Burnbar / Open Log Folder / Copy Diagnostics, a single state-driven **update row**, and Quit. The Dashboard and Refresh rows carry template icons. It fetches nothing; the [CaptureService](./capture-service.md) pushes usage state via `render`, [UpdateService](./update-service.md) pushes update state via `renderUpdate`, and the card bitmap + the row icons are rasterized by the injected [MenuCardRenderer](./menu-card-window.md).
+The menu-bar surface — a display-only consumer of `TrayState` **and** `UpdateState`. It owns the template icon and macOS cost title, then renders the context menu: a rich **stats card** bitmap (today + 30-day spend/tokens, a bar chart, top model) shown as a non-selectable banner, "Open Usage Dashboard…" directly beneath it, an "Updated …" relative-time stamp, Refresh Now, an Auto-Refresh radio submenu, About Burnbar / Open Log Folder / Copy Diagnostics, a single state-driven **update row**, and Quit. The Dashboard and Refresh rows carry template icons. When an update needs action it also swaps the menu-bar icon for a **badged** variant (blue dot = available, orange = downloaded), composited from the template glyph by the pure [tray-icon](./tray-icon.md) helper. It fetches nothing; the [CaptureService](./capture-service.md) pushes usage state via `render`, [UpdateService](./update-service.md) pushes update state via `renderUpdate`, and the card bitmap + the row icons are rasterized by the injected [MenuCardRenderer](./menu-card-window.md).
 
 ## Public Surface
 
@@ -25,6 +25,7 @@ Module-private: `toCardData()` (merges the derived `MenuCard` with today's numbe
 - Stamp the menu appearance (`nativeTheme.shouldUseDarkColors`) into the card data so the transparent card's value text stays legible, and re-render the card on `nativeTheme` "updated". — [toCardData](../../src/tray.ts#L240), [handleThemeChange](../../src/tray.ts#L54)
 - Show the "Updated …" relative-time row + Refresh Now (icon), the Auto-Refresh radio submenu (presets + a disabled "Custom" radio for a non-preset value), and **About Burnbar** labeled with the app version (`app.getVersion()`). — [buildMenuItems](../../src/tray.ts#L157), [buildAutoRefreshItem](../../src/tray.ts#L189)
 - Render exactly one state-driven **update row** — label/behavior determined by `UpdateState.status` (`Check for Updates` / `Checking for Updates...` / `Download Update (vX.Y.Z)...` / `Downloading... NN%` / `Restart to Update`) — placed just above the final separator + Quit. There is no separate always-visible "Up to date" row. — [buildUpdateItem](../../src/tray.ts), [renderUpdate](../../src/tray.ts), [ADR-011](../adr/011-auto-update-mechanism.md)
+- Swap the tray image to a **badged** variant when the update status warrants attention (`available` → blue, `downloaded` → orange), else restore the plain template icon. Variants are composited via [tray-icon](./tray-icon.md) from `templateIcon.toBitmap()`, memoized by `${badge}:${appearance}`, and re-derived on a light/dark switch; any failure falls back to the template icon. — [refreshTrayIcon](../../src/tray.ts), [handleThemeChange](../../src/tray.ts), [ADR-011 amendment](../adr/011-auto-update-mechanism.md#amendment-attention-cues-2026-07)
 - Wire menu clicks to the injected `TrayCallbacks`; Quit calls `app.quit()`. — [buildMenuItems](../../src/tray.ts#L157)
 - Tear down the timer and destroy the tray on dispose (the card window is disposed by `main`). — [dispose](../../src/tray.ts#L110)
 
@@ -40,7 +41,7 @@ Module-private: `toCardData()` (merges the derived `MenuCard` with today's numbe
 
 `main` constructs the tray with the full `TrayCallbacks` and the `MenuCardRenderer`, then subscribes `CaptureService.onState` to `tray.render` and `UpdateService.onState` to `tray.renderUpdate`. — [main.ts](../../src/main.ts)
 
-`renderUpdate(state)` stores the `UpdateState` and rebuilds the menu — same shape as `render`, but without any card re-rasterization (the update row is plain text/icon-gutter, no bitmap). `buildUpdateItem` switches on `state.status` to pick the row's label and click handler; `idle`/`error` (and the initial/`update-not-available` state) collapse onto the same manual "Check for Updates" action.
+`renderUpdate(state)` stores the `UpdateState`, rebuilds the menu, and calls `refreshTrayIcon()`. `buildUpdateItem` switches on `state.status` to pick the row's label and click handler; `idle`/`error` (and the initial/`update-not-available` state) collapse onto the same manual "Check for Updates" action. `refreshTrayIcon` maps the status to a badge via `badgeForStatus`: no badge restores the template icon, otherwise it composites (or reuses a cached) non-template variant for the current `nativeTheme` appearance and `setImage`s it. The card bitmap is untouched by the update path.
 
 `initialize()` loads the template icon, starts the 60s label timer, builds the initial (cardless) menu, and kicks off `loadIcons` (render + cache the two row glyphs once; this also warms the hidden window). Each `render(state)` stores the state and rebuilds immediately (so the title and rows are fresh), then calls `refreshCard`. `refreshCard` builds the renderer input via `toCardData`, hashes it to a JSON signature, and re-rasterizes **only** when the signature changed (so the 60s tick and unchanged re-captures reuse the cached `NativeImage`); a newer state's signature supersedes an in-flight render. The card is a **display-only** banner (`enabled: false`); the drill-down lives in the "Open Usage Dashboard…" row immediately beneath it. On a ccusage error the card is dropped and the menu collapses to a single "Error loading usage data" line.
 
@@ -82,6 +83,7 @@ flowchart LR
 - **Card cache is load-bearing for the label tick**: re-rasterizing only when the JSON signature changes keeps the 60s tick and unchanged re-captures from spawning a render round-trip. — [refreshCard](../../src/tray.ts#L122)
 - **Async-render safety**: a render whose signature is no longer current is discarded, so out-of-order completions never show stale numbers. — [refreshCard](../../src/tray.ts#L122)
 - **Icons are best-effort & cached**: rendered once at startup; if `renderIcon` returns `null` the rows simply show no icon. — [loadIcons](../../src/tray.ts#L87)
+- **Badge is best-effort & non-template**: the badged variant is a runtime-composited non-template image (so light/dark is handled in code, not by macOS auto-tinting); a compose failure falls back to the plain template icon so the menu bar never goes blank. Only `available`/`downloaded` badge — every other status shows the template. — [refreshTrayIcon](../../src/tray.ts), [tray-icon](./tray-icon.md), [ADR-004](../adr/004-template-tray-icon.md)
 - **Graceful degradation**: if the card renderer returns `null` (or before the first render lands), the menu shows plain-text "Today's Usage" rows instead of a blank item. — [addFallbackUsageItems](../../src/tray.ts#L217)
 - **Exactly one update row, always present**: `buildUpdateItem` always returns a row (idle/error fold onto the manual "Check for Updates" action) — there is no state that removes the row or leaves the menu without an update entry. — [buildUpdateItem](../../src/tray.ts), [ADR-011](../adr/011-auto-update-mechanism.md)
 - **The tray never calls `quitAndInstall()` itself**: `onRestartToUpdate` is a callback into `main.ts`, which is the sole caller of `UpdateService.quitAndInstall()` — the tray only renders the click target. — [buildUpdateItem](../../src/tray.ts), [main.ts](../../src/main.ts)
@@ -91,13 +93,16 @@ flowchart LR
 - To add a menu row, extend `buildMenuItems`. — [buildMenuItems](../../src/tray.ts#L157)
 - To change what the card shows, edit [menu-card](./menu-card.md) (the canvas) and the `MenuCard`/`MenuCardData` contracts in [types](./types.md); feed new figures from [capture-service](./capture-service.md)'s `computeCard`.
 - To add a menu-row icon, add a glyph to `__burnbarDrawIcon` in [menu-card](./menu-card.md) and render it in `loadIcons`. — [loadIcons](../../src/tray.ts#L87)
+- To change the update badge (colors, which states badge, geometry), edit [tray-icon](./tray-icon.md) — `BADGE_RGB`, `badgeForStatus`, and `composeBadgedIconBitmap`; the tray's `refreshTrayIcon` wiring stays as-is.
 - New refresh presets: edit `REFRESH_PRESETS_MINUTES`; the "Custom" fallback then narrows automatically. — [settings.ts:9](../../src/settings.ts#L9)
 - The icon path assumes `assets/icon.png` sits one level up from `dist/`; keep that layout when changing packaging. — [initialize](../../src/tray.ts#L63)
 
 ## Related Files
 
 - [capture-service.ts](../../src/capture-service.ts) — produces and pushes the `TrayState` (`onState`), including the derived `MenuCard`.
-- [update-service.ts](../../src/update-service.ts) → [update-service.md](./update-service.md) — produces and pushes the `UpdateState` (`onState`) the update row renders.
+- [update-service.ts](../../src/update-service.ts) → [update-service.md](./update-service.md) — produces and pushes the `UpdateState` (`onState`) the update row + badge render.
+- [tray-icon.ts](../../src/tray-icon.ts) → [tray-icon.md](./tray-icon.md) — the pure badge compositor `refreshTrayIcon` calls.
+- [update-notifier.ts](../../src/update-notifier.ts) → [update-notifier.md](./update-notifier.md) — the companion notifier for the same `UpdateState` transitions.
 - [menu-card-window.ts](../../src/menu-card-window.ts) → [menu-card-window.md](./menu-card-window.md) — the injected `MenuCardRenderer` that rasterizes the card bitmap.
 - [menu-card/](../../src/menu-card/) → [menu-card.md](./menu-card.md) — the browser-context canvas that draws the card.
 - [main.ts](../../src/main.ts) — wires the `TrayCallbacks` (incl. `onAbout` → GitHub, `onCheckForUpdates`/`onDownloadUpdate`/`onRestartToUpdate` → `UpdateService`) and the `MenuCardRenderer` to the service, window, and settings.

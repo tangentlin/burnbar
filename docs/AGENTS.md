@@ -28,6 +28,7 @@
 | Change icons | [modules/icon-pipeline.md](./modules/icon-pipeline.md) → [scripts/generate-icons.mjs](../scripts/generate-icons.mjs) + the SVGs |
 | Package / sign / notarize / publish | [modules/packaging.md](./modules/packaging.md), [features/release-distribution.md](./features/release-distribution.md) |
 | Change update check/download/install behavior | [features/auto-update.md](./features/auto-update.md) → [src/update-service.ts](../src/update-service.ts) + [adr/011](./adr/011-auto-update-mechanism.md) |
+| Change the update attention cues (icon badge / notifications) | [features/auto-update.md](./features/auto-update.md) → [src/tray-icon.ts](../src/tray-icon.ts) (badge) + [src/update-notifier.ts](../src/update-notifier.ts) (notifications) + [adr/011 amendment](./adr/011-auto-update-mechanism.md#amendment-attention-cues-2026-07) |
 | Know WHY a non-obvious choice was made | [adr/](./adr/) |
 
 ## Fresh Repo Tree
@@ -131,7 +132,8 @@ This is unrelated to the `ELECTRON_RUN_AS_NODE` that [src/capture.ts](../src/cap
 ### Change the auto-update behavior
 1. The lifecycle (check/download/install, error handling) lives in [update-service.ts](../src/update-service.ts); the fixed check cadence is `UPDATE_CHECK_INTERVAL_MINUTES` there — **not** `settings.ts`'s usage-refresh interval, which is a separate, user-configurable, manual-capable concern.
 2. The tray's single state-driven row lives in `buildUpdateItem` in [tray.ts](../src/tray.ts); wiring (`onCheckForUpdates`/`onDownloadUpdate`/`onRestartToUpdate`) is in [main.ts](../src/main.ts) — `quitAndInstall()` must only ever be reachable from the tray's explicit "Restart to Update" click.
-3. `pnpm check && pnpm typecheck && pnpm test`. Update [features/auto-update.md](./features/auto-update.md) + [modules/update-service.md](./modules/update-service.md); add/update an ADR if the mechanism itself changes (see [adr/011](./adr/011-auto-update-mechanism.md)).
+3. The attention cues (per [adr/011 amendment](./adr/011-auto-update-mechanism.md#amendment-attention-cues-2026-07)): the icon **badge** is composited by the pure [tray-icon.ts](../src/tray-icon.ts) and driven by `refreshTrayIcon` in [tray.ts](../src/tray.ts); the **notifications** are [update-notifier.ts](../src/update-notifier.ts), fanned out alongside the tray in [main.ts](../src/main.ts). Keep the invariant: a notification must never call `quitAndInstall()` (the "downloaded" notification is passive).
+4. `pnpm check && pnpm typecheck && pnpm test`. Update [features/auto-update.md](./features/auto-update.md) + [modules/update-service.md](./modules/update-service.md) + [modules/update-notifier.md](./modules/update-notifier.md) + [modules/tray.md](./modules/tray.md); add/update an ADR if the mechanism itself changes (see [adr/011](./adr/011-auto-update-mechanism.md)).
 
 ## Boundaries
 
@@ -151,6 +153,7 @@ Auto-update has its own hard rules (see [ADR-011](./adr/011-auto-update-mechanis
 | A consequential design decision | A new/updated [adr/*.md](./adr/) |
 | Packaging/signing/publish behavior | [modules/packaging.md](./modules/packaging.md), [features/release-distribution.md](./features/release-distribution.md) |
 | Auto-update check/download/install behavior | [modules/update-service.md](./modules/update-service.md), [features/auto-update.md](./features/auto-update.md) |
+| Auto-update attention cues (icon badge / notifications) | [modules/tray-icon.md](./modules/tray-icon.md), [modules/update-notifier.md](./modules/update-notifier.md), [modules/tray.md](./modules/tray.md), [features/auto-update.md](./features/auto-update.md) |
 
 ## Context-Minimizing Guidance
 
