@@ -1,7 +1,7 @@
-import { BrowserWindow, type NativeImage, nativeImage } from "electron";
+import { BrowserWindow, type NativeImage, type WebContents, nativeImage } from "electron";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { MenuCardData } from "./types.js";
+import type { CardFrame, MenuCardData } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -12,18 +12,77 @@ const PNG_DATA_URL_PREFIX = "data:image/png;base64,";
 
 /**
  * Rasterizes the menu's "stats card" by driving a hidden, never-shown
- * BrowserWindow: the page (src/menu-card) exposes `__burnbarDrawCard(data)` which
- * paints a `<canvas>` and returns a PNG data URL. We render off the compositor
- * (Canvas 2D, not `capturePage`) so output is deterministic regardless of window
- * visibility. The window is created once and reused across refreshes.
+ * BrowserWindow: the page (src/menu-card) exposes `__burnbarRenderCardFrame(data, nowMs)`,
+ * which paints a `<canvas>` for that instant and returns a PNG data URL plus
+ * whether the animation (odometer roll / bar growth / embers) needs another
+ * frame. We render off the compositor (Canvas 2D, not `capturePage`) so output
+ * is deterministic regardless of window visibility. The window is created once
+ * and reused across refreshes; the multi-frame polling loop lives in
+ * [card-animator.ts](./card-animator.ts).
  */
 export class MenuCardRenderer {
   private window: BrowserWindow | null = null;
   private ready: Promise<void> | null = null;
+  // Cache the JSON-stringified payload by reference identity: CardAnimator
+  // passes the *same* MenuCardData object on every frame of a run (only
+  // `nowMs` changes), so re-serializing an unchanged 30-element spark array
+  // up to ~24×/sec — indefinitely, while the menu is open — is pure waste.
+  private lastFrameData: MenuCardData | null = null;
+  private lastFrameDataJson = "";
 
-  /** Render the stats card to a retina `NativeImage`, or null if rendering failed. */
-  render(data: MenuCardData): Promise<NativeImage | null> {
-    return this.rasterize(`window.__burnbarDrawCard(${JSON.stringify(data)})`);
+  /**
+   * Render one animation frame of the stats card as of `nowMs` (an odometer
+   * roll, bar-chart growth, and/or ember particles all resolve for that
+   * instant — see [card.ts#renderCardFrame](./menu-card/card.ts)). Returns
+   * `animating: true` when the caller (see [card-animator.ts](./card-animator.ts))
+   * should schedule another frame; `image` is null on any render failure.
+   */
+  async renderFrame(
+    data: MenuCardData,
+    nowMs: number,
+  ): Promise<{ image: NativeImage | null; animating: boolean }> {
+    try {
+      const contents = await this.liveContents();
+      if (!contents) {
+        return { image: null, animating: false };
+      }
+      if (data !== this.lastFrameData) {
+        this.lastFrameData = data;
+        this.lastFrameDataJson = JSON.stringify(data);
+      }
+      const result = (await contents.executeJavaScript(
+        `window.__burnbarRenderCardFrame(${this.lastFrameDataJson}, ${nowMs})`,
+      )) as CardFrame | undefined;
+      if (
+        !result ||
+        typeof result.png !== "string" ||
+        !result.png.startsWith(PNG_DATA_URL_PREFIX)
+      ) {
+        return { image: null, animating: false };
+      }
+      const png = Buffer.from(result.png.slice(PNG_DATA_URL_PREFIX.length), "base64");
+      return {
+        image: nativeImage.createFromBuffer(png, { scaleFactor: SCALE }),
+        animating: result.animating,
+      };
+    } catch (error) {
+      // Best-effort: the caller falls back gracefully when this returns null.
+      console.error("menu-card frame render failed:", error);
+      return { image: null, animating: false };
+    }
+  }
+
+  /** Start (`active: true`) or stop the ember-particle loop; `nowMs` re-seeds the pattern on each activation. */
+  async setEmbersActive(active: boolean, nowMs: number): Promise<void> {
+    try {
+      const contents = await this.liveContents();
+      if (!contents) {
+        return;
+      }
+      await contents.executeJavaScript(`window.__burnbarSetEmbersActive(${active}, ${nowMs})`);
+    } catch (error) {
+      console.error("menu-card ember toggle failed:", error);
+    }
   }
 
   /** Render a menu-row glyph as a retina **template** image (macOS tints it). */
@@ -36,9 +95,8 @@ export class MenuCardRenderer {
   /** Evaluate a draw call in the hidden page and decode its PNG data URL. */
   private async rasterize(expression: string): Promise<NativeImage | null> {
     try {
-      await this.ensureWindow();
-      const contents = this.window?.webContents;
-      if (!contents || contents.isDestroyed()) {
+      const contents = await this.liveContents();
+      if (!contents) {
         return null;
       }
       const result = (await contents.executeJavaScript(expression)) as unknown;
@@ -52,6 +110,13 @@ export class MenuCardRenderer {
       console.error("menu-card render failed:", error);
       return null;
     }
+  }
+
+  /** Shared "ensure the hidden window is up, then hand back its usable webContents" guard. */
+  private async liveContents(): Promise<WebContents | null> {
+    await this.ensureWindow();
+    const contents = this.window?.webContents;
+    return contents && !contents.isDestroyed() ? contents : null;
   }
 
   dispose(): void {

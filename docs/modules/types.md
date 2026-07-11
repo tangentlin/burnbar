@@ -18,6 +18,7 @@ The shared, behavior-free type contracts for the whole app: the tray-display DTO
 | `BurnbarBridge` | the `window.burnbar` surface the preload exposes (`getSeries`, `getHeatmap`, `exportData`) | [types.ts#BurnbarBridge](../../src/types.ts) |
 | `AppSettings` | persisted user preferences (`settings.json`) | [types.ts:166-168](../../src/types.ts#L166-L168) |
 | `MenuCard`, `MenuCardData` | derived 30-day stats-card figures, and the card renderer's full input (+ today's numbers) | [types.ts:175-189](../../src/types.ts#L175-L189) |
+| `CardFrame` | one animated card frame — `{ png, animating }` — returned by `renderCardFrame` | [types.ts#CardFrame](../../src/types.ts) |
 | `TrayState` | the full payload pushed to the tray on every capture/setting change | [types.ts:207-212](../../src/types.ts#L207-L212) |
 | `UpdateStatus`, `UpdateState` | electron-updater lifecycle status + the serializable snapshot pushed to the tray's update row | [types.ts:220-239](../../src/types.ts#L220-L239) |
 
@@ -65,6 +66,7 @@ Two families share this file. The **archive records** (`DailyRecord`, `SessionRe
 - `SeriesDataset.tokens` is **parallel to** `data` — same length, same `labels` index; a chart line's cost and token total at index *i* describe the same day. — [types.ts:144-148](../../src/types.ts#L144-L148), [derive.ts](../../src/derive.ts)
 - `AppSettings.refreshIntervalMinutes === 0` is the **manual-only** sentinel — no auto-refresh timer is armed. — [types.ts:166-168](../../src/types.ts#L166-L168), [capture-service.ts:117](../../src/capture-service.ts#L117)
 - `MenuCard.topModel` is `null` when nothing was spent in range; `MenuCardData` extends `MenuCard` with nullable `todayCost`/`todayTokens` (null = no row yet) and `dark` (the menu appearance, which picks the transparent card's value-text color). The CaptureService derives `MenuCard` from the archive over the same 30-day window the dashboard's `30d` view uses, so the two stay consistent. — [types.ts:175-190](../../src/types.ts#L175-L190), [capture-service.ts#computeCard](../../src/capture-service.ts#L201)
+- `CardFrame.animating` is the sole signal the main-process poller (`card-animator.ts`) uses to decide whether to request another frame — it's `true` while an odometer roll or bar-growth tween is mid-flight, or while ember particles are active. See [ADR-013](../adr/013-menu-card-animation-framework.md).
 - `TrayState.lastUpdatedAt` is `null` until the first *successful* capture; it is the success stamp, not the last *attempt*. — [types.ts:209](../../src/types.ts#L209), [capture-service.ts:224-234](../../src/capture-service.ts#L224-L234)
 - `ArchiveManifest.schemaVersion` gates migrations; bump it when any record shape changes. — [types.ts:125-131](../../src/types.ts#L125-L131)
 - `UpdateState.version`/`percent`/`error` are `null` outside the states that populate them (e.g. `percent` only during `downloading`); `status` is the single source of truth for which fields are meaningful. — [types.ts:220-239](../../src/types.ts#L220-L239), [update-service.ts](../../src/update-service.ts)
