@@ -78,7 +78,7 @@ stateDiagram-v2
 
 ## Known Pitfalls
 
-- The card is a full-color bitmap shown as a menu-item `icon`, **not** a template image — macOS does not tint it. Its background is **transparent**, so the bold value text adapts to the menu appearance (`MenuCardData.dark` from `nativeTheme`); the tray re-renders the card on theme switches. The row icons *are* template images and tint correctly. — [adr/009](../adr/009-menu-stats-card.md), [tray.ts#handleThemeChange](../../src/tray.ts#L54)
+- The card is a full-color bitmap shown as a menu-item `icon`, **not** a template image — macOS does not tint it. Its background is **transparent**, so the bold value text adapts to the menu appearance (`MenuCardData.dark`, sourced from [appearance.ts#detectAppearance](../../src/appearance.ts) — not `nativeTheme.shouldUseDarkColors`, which is documented as unreliable for the tray, see [modules/appearance.md](../modules/appearance.md)); the tray re-renders the card on theme switches. The row icons *are* template images and tint correctly. — [adr/009](../adr/009-menu-stats-card.md), [tray.ts#handleThemeChange](../../src/tray.ts#L54)
 - The card renders deterministically off the compositor (Canvas 2D → data URL), so window visibility never affects output. — [menu-card-window.ts](../../src/menu-card-window.ts)
 - The card bitmap is cached by a JSON signature of its data; a newer state supersedes an in-flight render. Forgetting this on a new card field means stale images. — [tray.ts#refreshCard](../../src/tray.ts#L122)
 - The card **and** the fallback rows are `enabled: false` (display-only); the drill-down is the separate "Open Usage Dashboard…" row beneath the card.

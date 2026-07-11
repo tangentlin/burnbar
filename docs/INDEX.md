@@ -17,6 +17,7 @@
 | [main](./modules/main.md) | Electron lifecycle; wires capture + tray + dashboard, quit flush |
 | [tray](./modules/tray.md) | `TrayManager` — display-only icon/title/menu + "Open Usage Dashboard…" + update badge |
 | [tray-icon](./modules/tray-icon.md) | Pure compositor for the update badge (recolor glyph + colored dot) |
+| [appearance](./modules/appearance.md) | Reliable macOS menu-bar light/dark detection (`defaults read`, not `nativeTheme`) |
 | [capture](./modules/capture.md) | ccusage spawn (DI runner) + normalizers + `toUsageData` |
 | [capture-service](./modules/capture-service.md) | `CaptureService` — one ccusage call feeding tray **and** archive |
 | [store](./modules/store.md) | `ArchiveStore` — keep-richest merge, atomic IO, manifest |

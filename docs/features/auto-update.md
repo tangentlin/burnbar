@@ -31,6 +31,7 @@ If a check or download fails, the row falls back to "Check for Updates" (idle-eq
 - [ ] Only signed + notarized payloads install — enforced by electron-updater/Squirrel.Mac, not hand-rolled verification. — [ADR-011](../adr/011-auto-update-mechanism.md)
 - [ ] Exactly one update row is always present in the tray menu; its label reflects the current state (no separate "Up to date" row). — [tray.ts](../../src/tray.ts)
 - [ ] The tray icon shows a colored badge with an action glyph (blue + up-arrow = available, orange + restart arrow = downloaded) only while an update needs action, and the default icon stays a macOS template. — [tray-icon.ts](../../src/tray-icon.ts), [tray.ts](../../src/tray.ts), [ADR-004](../adr/004-template-tray-icon.md)
+- [ ] The badge's glyph is white on a dark menu bar and black on a light one — matching the real menu bar, not just the app's own theme. — [appearance.ts](../../src/appearance.ts), [ADR-011's reliable-detection amendment](../adr/011-auto-update-mechanism.md#amendment-reliable-menu-bar-appearance-detection-2026-07)
 - [ ] Notifications fire once per actionable transition (available → click downloads; downloaded → informational) plus a one-time post-restart confirmation, and never on errors. — [update-notifier.ts](../../src/update-notifier.ts)
 - [ ] A notification click never installs — `quitAndInstall()` stays reachable only from the tray's "Restart to Update" click. — [main.ts](../../src/main.ts), [ADR-011](../adr/011-auto-update-mechanism.md)
 
@@ -42,6 +43,7 @@ If a check or download fails, the row falls back to "Check for Updates" (idle-eq
 
 - The update feed (`latest-mac.yml`) is only produced when the release pipeline actually publishes; a broken CI `publish` config silently breaks update detection without breaking the release itself — see the "Verify assets landed" CI step in [release.yml](../../.github/workflows/release.yml).
 - A stable-tag release is a **draft** until manually published on GitHub; electron-updater only ever sees the latest *published* release, so drafting doesn't accidentally push an unfinished build to users.
+- `nativeTheme.shouldUseDarkColors` looks like the obvious signal for the badge's light/dark glyph but is documented as unreliable for the tray specifically (it tracks the app's own theme, not the menu bar) — don't reintroduce a direct read of it for appearance-dependent tray rendering. Use [appearance.ts#detectAppearance](../../src/appearance.ts) instead; see [modules/appearance.md](../modules/appearance.md).
 - electron-updater's `checkForUpdates()` no-ops for an unpackaged (dev) build; `UpdateService` additionally skips calling it at all in dev to avoid log spam.
 
 ## Related
