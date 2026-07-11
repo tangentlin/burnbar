@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.6.0] - 2026-07-11
+
+## What's Changed
+* Refactor changelog insertion to place releases at top by @tangentlin in https://github.com/tangentlin/burnbar/pull/48
+* Add update attention cues: tray-icon badge + OS notifications by @tangentlin in https://github.com/tangentlin/burnbar/pull/49
+
+
+**Full Changelog**: https://github.com/tangentlin/burnbar/compare/v0.5.0...v0.6.0
+
 ## [v0.5.0] - 2026-07-08
 
 ## What's Changed
