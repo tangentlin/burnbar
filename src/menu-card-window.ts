@@ -1,4 +1,4 @@
-import { BrowserWindow, type NativeImage, nativeImage } from "electron";
+import { BrowserWindow, type NativeImage, type WebContents, nativeImage } from "electron";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CardFrame, MenuCardData } from "./types.js";
@@ -23,6 +23,12 @@ const PNG_DATA_URL_PREFIX = "data:image/png;base64,";
 export class MenuCardRenderer {
   private window: BrowserWindow | null = null;
   private ready: Promise<void> | null = null;
+  // Cache the JSON-stringified payload by reference identity: CardAnimator
+  // passes the *same* MenuCardData object on every frame of a run (only
+  // `nowMs` changes), so re-serializing an unchanged 30-element spark array
+  // up to ~24×/sec — indefinitely, while the menu is open — is pure waste.
+  private lastFrameData: MenuCardData | null = null;
+  private lastFrameDataJson = "";
 
   /**
    * Render one animation frame of the stats card as of `nowMs` (an odometer
@@ -36,13 +42,16 @@ export class MenuCardRenderer {
     nowMs: number,
   ): Promise<{ image: NativeImage | null; animating: boolean }> {
     try {
-      await this.ensureWindow();
-      const contents = this.window?.webContents;
-      if (!contents || contents.isDestroyed()) {
+      const contents = await this.liveContents();
+      if (!contents) {
         return { image: null, animating: false };
       }
+      if (data !== this.lastFrameData) {
+        this.lastFrameData = data;
+        this.lastFrameDataJson = JSON.stringify(data);
+      }
       const result = (await contents.executeJavaScript(
-        `window.__burnbarRenderCardFrame(${JSON.stringify(data)}, ${nowMs})`,
+        `window.__burnbarRenderCardFrame(${this.lastFrameDataJson}, ${nowMs})`,
       )) as CardFrame | undefined;
       if (
         !result ||
@@ -66,9 +75,8 @@ export class MenuCardRenderer {
   /** Start (`active: true`) or stop the ember-particle loop; `nowMs` re-seeds the pattern on each activation. */
   async setEmbersActive(active: boolean, nowMs: number): Promise<void> {
     try {
-      await this.ensureWindow();
-      const contents = this.window?.webContents;
-      if (!contents || contents.isDestroyed()) {
+      const contents = await this.liveContents();
+      if (!contents) {
         return;
       }
       await contents.executeJavaScript(`window.__burnbarSetEmbersActive(${active}, ${nowMs})`);
@@ -87,9 +95,8 @@ export class MenuCardRenderer {
   /** Evaluate a draw call in the hidden page and decode its PNG data URL. */
   private async rasterize(expression: string): Promise<NativeImage | null> {
     try {
-      await this.ensureWindow();
-      const contents = this.window?.webContents;
-      if (!contents || contents.isDestroyed()) {
+      const contents = await this.liveContents();
+      if (!contents) {
         return null;
       }
       const result = (await contents.executeJavaScript(expression)) as unknown;
@@ -103,6 +110,13 @@ export class MenuCardRenderer {
       console.error("menu-card render failed:", error);
       return null;
     }
+  }
+
+  /** Shared "ensure the hidden window is up, then hand back its usable webContents" guard. */
+  private async liveContents(): Promise<WebContents | null> {
+    await this.ensureWindow();
+    const contents = this.window?.webContents;
+    return contents && !contents.isDestroyed() ? contents : null;
   }
 
   dispose(): void {

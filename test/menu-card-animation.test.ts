@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  clamp01,
   createEmberField,
   createTween,
   easeOutCubic,
@@ -33,14 +32,8 @@ describe("easing functions", () => {
   });
 });
 
-describe("clamp01 / lerp", () => {
-  it("clamps below 0 and above 1", () => {
-    expect(clamp01(-1)).toBe(0);
-    expect(clamp01(2)).toBe(1);
-    expect(clamp01(0.3)).toBe(0.3);
-  });
-
-  it("lerp interpolates linearly", () => {
+describe("lerp", () => {
+  it("interpolates linearly", () => {
     expect(lerp(0, 10, 0.5)).toBe(5);
     expect(lerp(5, 5, 0.7)).toBe(5);
     expect(lerp(0, 10, 0)).toBe(0);

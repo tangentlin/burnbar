@@ -11,10 +11,6 @@ export const linear: EasingFn = (t) => t;
 export const easeOutQuad: EasingFn = (t) => 1 - (1 - t) * (1 - t);
 export const easeOutCubic: EasingFn = (t) => 1 - Math.pow(1 - t, 3);
 
-export function clamp01(t: number): number {
-  return t < 0 ? 0 : t > 1 ? 1 : t;
-}
-
 export function lerp(from: number, to: number, t: number): number {
   return from + (to - from) * t;
 }

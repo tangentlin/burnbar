@@ -267,9 +267,13 @@ export class TrayManager {
     if (image && this.cardMenuItem) {
       this.cardMenuItem.icon = image;
     }
-    // First image ever (cold start, or recovering from a render failure):
-    // swap the plain-text fallback rows for the real card row.
-    if (!hadImage && image) {
+    // The menu's shape (card row vs. plain-text fallback) depends on
+    // `Boolean(cardImage)`, same as `buildMenuItems` — rebuild whenever that
+    // flips, in *either* direction: cold start / recovering from a render
+    // failure (fallback → card) as well as a frame that unexpectedly comes
+    // back null after a previous success (card → fallback). Steady-state
+    // animation frames (image → image) never rebuild.
+    if (hadImage !== (image !== null)) {
       this.rebuildMenu();
     }
   }

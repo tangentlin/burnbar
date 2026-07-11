@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { CardAnimator } from "../src/card-animator.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CardAnimator, FRAME_INTERVAL_MS, MAX_BOUNDED_RUN_MS } from "../src/card-animator.js";
 import type { MenuCardData } from "../src/types.js";
 
 const FAKE_DATA: MenuCardData = {
@@ -12,14 +12,17 @@ const FAKE_DATA: MenuCardData = {
   dark: false,
 };
 
-async function flush(): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
-}
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(0); // pin Date.now() so nowMs assertions are deterministic
+});
 
-/** A controllable test harness: `now` and the scheduled-frame callback are driven by hand, not real timers. */
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/** A controllable test harness: `renderFrame`/`setEmbersActive` are mocks; the clock is Vitest's fake timer. */
 function harness(renderResults: Array<{ image: unknown; animating: boolean }>) {
-  let nowValue = 0;
-  let pending: (() => void) | null = null;
   const frames: unknown[] = [];
   const emberCalls: Array<{ active: boolean; nowMs: number }> = [];
   let call = 0;
@@ -35,34 +38,9 @@ function harness(renderResults: Array<{ image: unknown; animating: boolean }>) {
 
   const animator = new CardAnimator(renderFrame, setEmbersActive, {
     onFrame: (image) => frames.push(image),
-    now: () => nowValue,
-    scheduleFrame: (cb) => {
-      pending = cb;
-      return {};
-    },
-    cancelFrame: () => {
-      pending = null;
-    },
   });
 
-  return {
-    animator,
-    frames,
-    renderFrame,
-    setEmbersActive,
-    emberCalls,
-    setNow: (value: number) => {
-      nowValue = value;
-    },
-    hasPending: () => pending !== null,
-    runPending: async () => {
-      const cb = pending;
-      expect(cb).not.toBeNull();
-      pending = null;
-      cb?.();
-      await flush();
-    },
-  };
+  return { animator, frames, renderFrame, setEmbersActive, emberCalls };
 }
 
 describe("CardAnimator", () => {
@@ -74,23 +52,25 @@ describe("CardAnimator", () => {
     ]);
 
     h.animator.onData(FAKE_DATA);
-    await flush();
+    await vi.advanceTimersByTimeAsync(0); // flush the first (synchronously-kicked-off) render
     expect(h.frames).toEqual(["f1"]);
-    expect(h.hasPending()).toBe(true);
 
-    await h.runPending();
+    await vi.advanceTimersByTimeAsync(FRAME_INTERVAL_MS);
     expect(h.frames).toEqual(["f1", "f2"]);
-    expect(h.hasPending()).toBe(true);
 
-    await h.runPending();
+    await vi.advanceTimersByTimeAsync(FRAME_INTERVAL_MS);
     expect(h.frames).toEqual(["f1", "f2", "f3"]);
-    expect(h.hasPending()).toBe(false); // settled — no more frames scheduled
+
+    // Settled — advancing further shouldn't schedule/render anything else.
+    await vi.advanceTimersByTimeAsync(FRAME_INTERVAL_MS * 5);
+    expect(h.frames).toEqual(["f1", "f2", "f3"]);
+    expect(h.renderFrame).toHaveBeenCalledTimes(3);
   });
 
   it("does not render anything before the first onData", async () => {
     const h = harness([{ image: "f1", animating: false }]);
     h.animator.setMenuOpen(false);
-    await flush();
+    await vi.advanceTimersByTimeAsync(0);
     expect(h.frames).toEqual([]);
   });
 
@@ -102,36 +82,39 @@ describe("CardAnimator", () => {
     ]);
     h.animator.onData(FAKE_DATA);
     h.animator.setMenuOpen(true);
-    await flush();
+    await vi.advanceTimersByTimeAsync(0);
     expect(h.emberCalls).toEqual([{ active: true, nowMs: 0 }]);
 
-    await h.runPending();
+    await vi.advanceTimersByTimeAsync(FRAME_INTERVAL_MS);
     expect(h.frames).toEqual(["f1", "f2"]);
-    expect(h.hasPending()).toBe(true); // menu still open — keeps going despite animating:false
 
-    await h.runPending();
+    await vi.advanceTimersByTimeAsync(FRAME_INTERVAL_MS);
     expect(h.frames).toEqual(["f1", "f2", "f3"]);
-    expect(h.hasPending()).toBe(true);
+
+    // Menu still open — keeps going indefinitely despite animating:false.
+    await vi.advanceTimersByTimeAsync(FRAME_INTERVAL_MS * 3);
+    expect(h.renderFrame.mock.calls.length).toBeGreaterThan(3);
   });
 
-  it("stops one tick after the menu closes, once the renderer also reports done", async () => {
+  it("stops once the menu closes and the renderer also reports done", async () => {
     const h = harness([
       { image: "f1", animating: true },
-      { image: "f2", animating: false }, // still "animating" per menuOpen this tick
+      { image: "f2", animating: false },
       { image: "f3", animating: false },
     ]);
     h.animator.onData(FAKE_DATA);
     h.animator.setMenuOpen(true);
-    await flush();
+    await vi.advanceTimersByTimeAsync(0);
     h.animator.setMenuOpen(false);
     expect(h.emberCalls.at(-1)).toEqual({ active: false, nowMs: 0 });
 
-    await h.runPending(); // this tick still observes menuOpen flip mid-flight is fine either way
-    // One more tick should see menuOpen=false and animating=false, and stop.
-    if (h.hasPending()) {
-      await h.runPending();
-    }
-    expect(h.hasPending()).toBe(false);
+    // Give it a few frames' worth of time to settle after the close.
+    await vi.advanceTimersByTimeAsync(FRAME_INTERVAL_MS * 3);
+    const callsAtSettle = h.renderFrame.mock.calls.length;
+
+    // No further renders once it's stopped.
+    await vi.advanceTimersByTimeAsync(FRAME_INTERVAL_MS * 3);
+    expect(h.renderFrame).toHaveBeenCalledTimes(callsAtSettle);
   });
 
   it("a second onData() before the first render resolves doesn't start a duplicate concurrent pump", async () => {
@@ -143,27 +126,31 @@ describe("CardAnimator", () => {
     // Fresh data arrives synchronously, before the in-flight render settles —
     // this is exactly the race `looping` (set before any await) guards against.
     h.animator.onData({ ...FAKE_DATA, todayCost: 2 });
-    await flush();
+    await vi.advanceTimersByTimeAsync(0);
     // Exactly one frame landed from the single in-flight render, not two
     // concurrent pumps racing each other.
     expect(h.frames).toEqual(["f1"]);
     expect(h.renderFrame).toHaveBeenCalledTimes(1);
 
-    await h.runPending();
+    await vi.advanceTimersByTimeAsync(FRAME_INTERVAL_MS);
     expect(h.frames).toEqual(["f1", "f2"]);
     expect(h.renderFrame).toHaveBeenCalledTimes(2);
-    expect(h.hasPending()).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(FRAME_INTERVAL_MS * 3);
+    expect(h.renderFrame).toHaveBeenCalledTimes(2); // settled, no more scheduled
   });
 
   it("enforces the bounded safety cap when the renderer never reports done and the menu stays closed", async () => {
     const h = harness([{ image: "f", animating: true }]);
     h.animator.onData(FAKE_DATA);
-    await flush();
-    expect(h.hasPending()).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
 
-    h.setNow(10_000); // far past MAX_BOUNDED_RUN_MS
-    await h.runPending();
-    expect(h.hasPending()).toBe(false);
+    await vi.advanceTimersByTimeAsync(MAX_BOUNDED_RUN_MS + FRAME_INTERVAL_MS * 2);
+    const callsAtCap = h.renderFrame.mock.calls.length;
+
+    // Past the cap, further time shouldn't produce more renders.
+    await vi.advanceTimersByTimeAsync(FRAME_INTERVAL_MS * 5);
+    expect(h.renderFrame).toHaveBeenCalledTimes(callsAtCap);
   });
 
   it("dispose() stops the loop and ignores any already in-flight render", async () => {
@@ -172,11 +159,12 @@ describe("CardAnimator", () => {
       { image: "f2", animating: true },
     ]);
     h.animator.onData(FAKE_DATA);
-    await flush();
+    await vi.advanceTimersByTimeAsync(0);
     expect(h.frames).toEqual(["f1"]);
 
     h.animator.dispose();
-    // A pending scheduled frame should have been cancelled...
-    expect(h.hasPending()).toBe(false);
+    // No further renders after dispose, even though the loop was still "animating".
+    await vi.advanceTimersByTimeAsync(FRAME_INTERVAL_MS * 3);
+    expect(h.frames).toEqual(["f1"]);
   });
 });

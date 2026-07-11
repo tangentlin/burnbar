@@ -81,6 +81,24 @@ function fontSizePx(font: string): number {
   return match ? Number(match[1]) : 16;
 }
 
+// The rolling value's character set is small and fixed (digits, currency
+// symbol, separators, the compact-notation suffixes) against one font, so
+// per-character widths are fully cacheable — avoids a `measureText` call per
+// character on every animating frame (up to ~4 stats × several columns, up to
+// ~24×/sec). `ctx.font` must already equal `font` when this is called.
+const glyphWidthCache = new Map<string, number>();
+
+function glyphWidth(ctx: CanvasRenderingContext2D, font: string, char: string): number {
+  const key = `${font} ${char}`;
+  const cached = glyphWidthCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const width = ctx.measureText(char).width;
+  glyphWidthCache.set(key, width);
+  return width;
+}
+
 /**
  * Draws `toText`, rolling in from `fromText` when they differ: each digit
  * column that changed slides the old glyph out and the new one in (clipped to
@@ -115,7 +133,7 @@ function drawRollingValue(
     const toChar = to[i] ?? " ";
     const fromChar = from[i] ?? " ";
     const measureChar = toChar === " " ? "0" : toChar;
-    const charWidth = ctx.measureText(measureChar).width;
+    const charWidth = glyphWidth(ctx, font, measureChar);
 
     if (toChar === fromChar) {
       ctx.fillText(toChar, cursorX, y);
@@ -261,6 +279,38 @@ function drawEmbers(ctx: CanvasRenderingContext2D, instances: EmberInstance[]): 
 
 // --- Layout + orchestration --------------------------------------------------
 
+type CardCanvas = { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D };
+let sharedCard: CardCanvas | null = null;
+
+/**
+ * Lazily creates one canvas+context and reuses it for every frame. `paintCard`
+ * runs up to ~24×/sec while animating (indefinitely while embers are active),
+ * so allocating a fresh backing store per frame would be wasteful — each call
+ * fully repaints anyway, so a cleared, reused canvas is behaviorally identical.
+ */
+function cardCanvas(): CardCanvas | null {
+  if (sharedCard) {
+    return sharedCard;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = W * SCALE;
+  canvas.height = H * SCALE;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return null;
+  }
+  sharedCard = { canvas, ctx };
+  return sharedCard;
+}
+
+type StatSpec = {
+  x: number;
+  top: number;
+  label: string;
+  toValue: string;
+  fromValue: string | null;
+};
+
 /** Paints one frame given already-resolved animation state; owns no session/timing bookkeeping. */
 function paintCard(
   data: MenuCardData,
@@ -270,68 +320,64 @@ function paintCard(
   nowMs: number,
   emberInstances: EmberInstance[] | null,
 ): CardFrame {
-  const canvas = document.createElement("canvas");
-  canvas.width = W * SCALE;
-  canvas.height = H * SCALE;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
+  const card = cardCanvas();
+  if (!card) {
     return { png: "", animating: false };
   }
+  const { canvas, ctx } = card;
+  ctx.resetTransform();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.scale(SCALE, SCALE);
   ctx.textBaseline = "top";
 
   // Transparent background by design: no card fill, content sits on the menu, so
   // the value text adapts to the menu appearance.
   const valueColor = data.dark ? VALUE_DARK : VALUE_LIGHT;
+  const stats: StatSpec[] = [
+    {
+      x: COL_X[0]!,
+      top: 18,
+      label: "Today",
+      toValue: money(data.todayCost),
+      fromValue: prevForRoll ? money(prevForRoll.todayCost) : null,
+    },
+    {
+      x: COL_X[1]!,
+      top: 18,
+      label: "30d cost",
+      toValue: money(data.cost30d),
+      fromValue: prevForRoll ? money(prevForRoll.cost30d) : null,
+    },
+    {
+      x: COL_X[0]!,
+      top: 66,
+      label: "30d tokens",
+      toValue: tokens(data.tokens30d),
+      fromValue: prevForRoll ? tokens(prevForRoll.tokens30d) : null,
+    },
+    {
+      x: COL_X[1]!,
+      top: 66,
+      label: "Today tokens",
+      toValue: tokens(data.todayTokens),
+      fromValue: prevForRoll ? tokens(prevForRoll.todayTokens) : null,
+    },
+  ];
   let animating = false;
-  animating =
-    drawStat(
-      ctx,
-      COL_X[0]!,
-      18,
-      "Today",
-      money(data.todayCost),
-      prevForRoll ? money(prevForRoll.todayCost) : null,
-      odometerStartMs,
-      nowMs,
-      valueColor,
-    ) || animating;
-  animating =
-    drawStat(
-      ctx,
-      COL_X[1]!,
-      18,
-      "30d cost",
-      money(data.cost30d),
-      prevForRoll ? money(prevForRoll.cost30d) : null,
-      odometerStartMs,
-      nowMs,
-      valueColor,
-    ) || animating;
-  animating =
-    drawStat(
-      ctx,
-      COL_X[0]!,
-      66,
-      "30d tokens",
-      tokens(data.tokens30d),
-      prevForRoll ? tokens(prevForRoll.tokens30d) : null,
-      odometerStartMs,
-      nowMs,
-      valueColor,
-    ) || animating;
-  animating =
-    drawStat(
-      ctx,
-      COL_X[1]!,
-      66,
-      "Today tokens",
-      tokens(data.todayTokens),
-      prevForRoll ? tokens(prevForRoll.todayTokens) : null,
-      odometerStartMs,
-      nowMs,
-      valueColor,
-    ) || animating;
+  for (const stat of stats) {
+    animating =
+      drawStat(
+        ctx,
+        stat.x,
+        stat.top,
+        stat.label,
+        stat.toValue,
+        stat.fromValue,
+        odometerStartMs,
+        nowMs,
+        valueColor,
+      ) || animating;
+  }
 
   animating = drawBars(ctx, data.spark, BARS_TOP, BARS_HEIGHT, barsStartMs, nowMs) || animating;
 
