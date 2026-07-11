@@ -109,7 +109,7 @@ One ccusage `daily` spawn per refresh interval (default 15 min, user-configurabl
 
 Dashboard: `contextIsolation: true`, `nodeIntegration: false`, a strict CSP, `sandbox: false` (for the ESM preload), and a single read-only IPC channel; the renderer loads only local bundled code. — [window.ts](../src/window.ts), [ADR-008](./adr/008-dashboard-window-bundle.md)
 
-About: the same `contextIsolation`/`nodeIntegration` posture but `sandbox: true` (default) and **no preload at all** — it's a static page with no data to fetch, so `setWindowOpenHandler` + `will-navigate` are the only extra surface, both routing links to `shell.openExternal`. — [about-window.ts](../src/about-window.ts)
+About: the same `contextIsolation`/`nodeIntegration` posture but `sandbox: true` and **no preload at all** — it's a static page with no data to fetch, so `setWindowOpenHandler` + `will-navigate` are the only extra surface, both routing links to `shell.openExternal` after an http(s)-only scheme check. — [about-window.ts](../src/about-window.ts)
 
 ### Platform Behavior
 

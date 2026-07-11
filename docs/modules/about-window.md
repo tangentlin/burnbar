@@ -8,18 +8,20 @@ Owns the "About Burnbar" `BrowserWindow` — a small static credits/links page �
 
 | Export | Type | File |
 |--------|------|------|
-| `AboutWindow` | class | [about-window.ts:14](../../src/about-window.ts#L14) |
-| `AboutWindow#open()` | `() => void` | [about-window.ts:17](../../src/about-window.ts#L17) |
-| `AboutWindow#dispose()` | `() => void` | [about-window.ts:68](../../src/about-window.ts#L68) |
+| `AboutWindow` | class | [about-window.ts:34](../../src/about-window.ts#L34) |
+| `AboutWindow#open()` | `() => void` | [about-window.ts:37](../../src/about-window.ts#L37) |
+| `AboutWindow#dispose()` | `() => void` | [about-window.ts:92](../../src/about-window.ts#L92) |
+
+`openExternal(url)` (module-private) is the shared gate every link routes through. — [about-window.ts:12-25](../../src/about-window.ts#L12-L25)
 
 ## Responsibilities
 
-- Lazily create the window on first `open()`, reusing/focusing it otherwise. — [about-window.ts:17-22](../../src/about-window.ts#L17-L22)
-- Apply a tighter security boundary than the dashboard: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` (default), **no preload**. — [about-window.ts:24-38](../../src/about-window.ts#L24-L38)
-- Route every link on the page to the system browser: `setWindowOpenHandler` denies in-app window creation and calls `shell.openExternal` for `target="_blank"` links; a `will-navigate` listener is a backstop for any other navigation attempt. — [about-window.ts:41-53](../../src/about-window.ts#L41-L53)
-- Show on `ready-to-show` and clear the handle on `closed`. — [about-window.ts:55-61](../../src/about-window.ts#L55-L61)
-- Load the bundled page at `dist/about/index.html`, passing `app.getVersion()` as a `?version=` query param — the page's own script (`about.ts`) reads it client-side. — [about-window.ts:63-65](../../src/about-window.ts#L63-L65)
-- Tear the window down on app quit. — [about-window.ts:68-73](../../src/about-window.ts#L68-L73)
+- Lazily create the window on first `open()`, reusing/focusing it otherwise. — [about-window.ts:37-42](../../src/about-window.ts#L37-L42)
+- Apply a tighter security boundary than the dashboard: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, **no preload**. — [about-window.ts:44-58](../../src/about-window.ts#L44-L58)
+- Route every link on the page to the system browser through `openExternal`, which allow-lists `http:`/`https:` (refusing `file:`, `javascript:`, …) and logs — rather than throws on — a rejected `shell.openExternal` call. `setWindowOpenHandler` denies in-app window creation for `target="_blank"` links; a `will-navigate` listener is a backstop for any other navigation attempt. — [about-window.ts:7-25](../../src/about-window.ts#L7-L25), [about-window.ts:66-73](../../src/about-window.ts#L66-L73)
+- Show on `ready-to-show` and clear the handle on `closed`. — [about-window.ts:75-81](../../src/about-window.ts#L75-L81)
+- Load the bundled page at `dist/about/index.html`, passing `app.getVersion()` as a `?version=` query param — the page's own script (`about.ts`) reads it client-side; a load failure is caught and logged rather than left as an unhandled rejection. — [about-window.ts:83-90](../../src/about-window.ts#L83-L90)
+- Tear the window down on app quit. — [about-window.ts:92-97](../../src/about-window.ts#L92-L97)
 
 ## Non-Goals
 
@@ -37,19 +39,19 @@ This module uses only Electron's `BrowserWindow`; it defines no domain types.
 
 ## Invariants & Failure Modes
 
-- **Single window**: at most one About window exists; concurrent `open()`s focus rather than duplicate. — [about-window.ts:18-21](../../src/about-window.ts#L18-L21)
-- **No leak after close**: `window` returns to `null` on `closed`. — [about-window.ts:59-61](../../src/about-window.ts#L59-L61)
-- **Links never navigate the window**: both `setWindowOpenHandler` (new-window path) and `will-navigate` (same-window path) route to `shell.openExternal` instead. `will-navigate` does not fire for the initial `loadFile()` call — only for user/page-initiated navigation — so this can't race the page's own load. — [about-window.ts:41-53](../../src/about-window.ts#L41-L53)
-- **Bundle path coupling**: `index.html`, `about.css`, `about.js`, and `burnbar.svg` are resolved relative to `dist/about/` — the esbuild `build:renderer` step must emit all four, or `loadFile` fails. — [scripts/build-renderer.mjs](../../scripts/build-renderer.mjs)
+- **Single window**: at most one About window exists; concurrent `open()`s focus rather than duplicate. — [about-window.ts:38-41](../../src/about-window.ts#L38-L41)
+- **No leak after close**: `window` returns to `null` on `closed`. — [about-window.ts:79-81](../../src/about-window.ts#L79-L81)
+- **Links never navigate the window, and never an unexpected scheme**: both `setWindowOpenHandler` (new-window path) and `will-navigate` (same-window path) route through `openExternal`, which allow-lists `http:`/`https:` before calling `shell.openExternal`. `will-navigate` does not fire for the initial `loadFile()` call — only for user/page-initiated navigation — so this can't race the page's own load. — [about-window.ts:7-25](../../src/about-window.ts#L7-L25), [about-window.ts:66-73](../../src/about-window.ts#L66-L73)
+- **Bundle path coupling**: `index.html`, `about.css`, and `about.js` are emitted from `src/about/` by the esbuild `build:renderer` step; `burnbar.svg` is copied separately from the repo's canonical `assets/burnbar.svg` (not duplicated under `src/about/`). All four must land in `dist/about/`, or `loadFile` fails. — [scripts/build-renderer.mjs](../../scripts/build-renderer.mjs)
 
 ## Extension Points
 
-- Window chrome (size, resizability, background) is set inline; adjust the `BrowserWindow` options. — [about-window.ts:24-38](../../src/about-window.ts#L24-L38)
+- Window chrome (size, resizability, background) is set inline; adjust the `BrowserWindow` options. — [about-window.ts:44-58](../../src/about-window.ts#L44-L58)
 - A new credit or link is a markup-only change in `src/about/index.html` (+ `about.css`) — no TypeScript change needed unless it becomes dynamic.
 
 ## Related Files
 
 - [main.ts](../../src/main.ts) — constructs the window and wires `open()` to `onAbout`.
 - [src/about/index.html](../../src/about/index.html), [src/about/about.css](../../src/about/about.css), [src/about/about.ts](../../src/about/about.ts) — the static page.
-- [scripts/build-renderer.mjs](../../scripts/build-renderer.mjs) — bundles `about.ts` and copies the HTML/CSS/SVG into `dist/about/`.
+- [scripts/build-renderer.mjs](../../scripts/build-renderer.mjs) — bundles `about.ts`, copies the HTML/CSS from `src/about/`, and copies `burnbar.svg` from `assets/` into `dist/about/`.
 - See [features/about.md](../features/about.md) for the user-facing spec, and [window](./window.md) for the sibling dashboard window this deliberately diverges from (no preload/IPC).

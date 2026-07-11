@@ -22,7 +22,7 @@ Any link (callout, a credit, a footer icon) opens in the system default browser;
 - [ ] "About Burnbar `<version>`" in the tray menu (version from `app.getVersion()`) opens the About window, reusing/focusing an already-open instance rather than duplicating it. — [tray.ts:298](../../src/tray.ts#L298), [about-window.ts](../../src/about-window.ts)
 - [ ] The window shows the app icon, "Burnbar", the running version, a "View Burnbar on GitHub" callout linking to the project repo, and three credits (ccusage, the forked-from app + author, the icon artist), each a clickable link. — [src/about/index.html](../../src/about/index.html)
 - [ ] Footer links to the maintainer's GitHub and X profiles. — [src/about/index.html](../../src/about/index.html)
-- [ ] Every link opens externally (`shell.openExternal`), never inside the window — enforced by both `setWindowOpenHandler` (target="_blank" links) and a `will-navigate` backstop. — [about-window.ts](../../src/about-window.ts)
+- [ ] Every link opens externally (`shell.openExternal`), never inside the window, and only for `http:`/`https:` targets — enforced by both `setWindowOpenHandler` (target="_blank" links) and a `will-navigate` backstop, both routed through a shared scheme allowlist. — [about-window.ts](../../src/about-window.ts)
 
 ## Data Model (Conceptual)
 
@@ -42,4 +42,4 @@ None — the page is static markup; the only runtime value is `app.getVersion()`
 
 - This window has **no preload and no IPC** — it's the only Burnbar window that doesn't need one. Don't add a data dependency here; if the page ever needs live data, give it its own read-only channel rather than reaching into the archive directly.
 - `will-navigate` never fires for the window's own initial `loadFile()` — only for a user/page-initiated navigation — so the guard can unconditionally `preventDefault()` without racing the page load. — [about-window.ts](../../src/about-window.ts)
-- The window is fixed-size and non-resizable by design (an About panel, not a document); if the credits list grows, `about.css`'s `overflow-y: auto` is the safety net, not a reason to skip re-checking the window height.
+- The window is fixed-size and non-resizable by design (an About panel, not a document); if the page's content grows, `about.css`'s page-level `overflow-y: auto` (on `html`/`body`) is the safety net, not a reason to skip re-checking the window height.

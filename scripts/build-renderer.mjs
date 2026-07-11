@@ -1,7 +1,7 @@
 // Bundles the browser-context renderers separately from the main-process `tsc`
 // build: Chart.js must be bundled for the dashboard to import it, and both
 // renderers need the DOM lib that the Node16 main config omits. Each renderer's
-// HTML (and the dashboard CSS) is copied alongside its bundle into dist/.
+// static assets are copied alongside its bundle into dist/.
 import { cp, mkdir } from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,17 +10,7 @@ import * as esbuild from "esbuild";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcRoot = path.join(root, "src");
 const distRoot = path.join(root, "dist");
-
-const dashboardSrc = path.join(srcRoot, "dashboard");
-const dashboardOut = path.join(distRoot, "dashboard");
-const cardSrc = path.join(srcRoot, "menu-card");
-const cardOut = path.join(distRoot, "menu-card");
-const aboutSrc = path.join(srcRoot, "about");
-const aboutOut = path.join(distRoot, "about");
-
-await mkdir(dashboardOut, { recursive: true });
-await mkdir(cardOut, { recursive: true });
-await mkdir(aboutOut, { recursive: true });
+const assetsRoot = path.join(root, "assets");
 
 const bundle = (entry, outfile) =>
   esbuild.build({
@@ -34,13 +24,21 @@ const bundle = (entry, outfile) =>
     logLevel: "info",
   });
 
-await bundle(path.join(dashboardSrc, "renderer.ts"), path.join(dashboardOut, "renderer.js"));
-await bundle(path.join(cardSrc, "card.ts"), path.join(cardOut, "card.js"));
-await bundle(path.join(aboutSrc, "about.ts"), path.join(aboutOut, "about.js"));
+const renderers = [
+  { name: "dashboard", entry: "renderer.ts", assets: ["index.html", "dashboard.css"] },
+  { name: "menu-card", entry: "card.ts", assets: ["index.html"] },
+  { name: "about", entry: "about.ts", assets: ["index.html", "about.css"] },
+];
 
-await cp(path.join(dashboardSrc, "index.html"), path.join(dashboardOut, "index.html"));
-await cp(path.join(dashboardSrc, "dashboard.css"), path.join(dashboardOut, "dashboard.css"));
-await cp(path.join(cardSrc, "index.html"), path.join(cardOut, "index.html"));
-await cp(path.join(aboutSrc, "index.html"), path.join(aboutOut, "index.html"));
-await cp(path.join(aboutSrc, "about.css"), path.join(aboutOut, "about.css"));
-await cp(path.join(aboutSrc, "burnbar.svg"), path.join(aboutOut, "burnbar.svg"));
+for (const { name, entry, assets } of renderers) {
+  const src = path.join(srcRoot, name);
+  const out = path.join(distRoot, name);
+  await mkdir(out, { recursive: true });
+  await bundle(path.join(src, entry), path.join(out, entry.replace(/\.ts$/, ".js")));
+  for (const asset of assets) {
+    await cp(path.join(src, asset), path.join(out, asset));
+  }
+}
+
+// The About page reuses the repo's canonical logo instead of keeping a second copy.
+await cp(path.join(assetsRoot, "burnbar.svg"), path.join(distRoot, "about", "burnbar.svg"));

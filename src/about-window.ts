@@ -4,6 +4,26 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Only http(s) targets are ever legitimate on this static page — refuse
+// anything else (file:, javascript:, ...) rather than handing it to the OS
+// shell, and log (not throw) if the OS itself refuses the open.
+const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["https:", "http:"]);
+
+function openExternal(url: string): void {
+  let protocol: string;
+  try {
+    protocol = new URL(url).protocol;
+  } catch {
+    return;
+  }
+  if (!ALLOWED_EXTERNAL_PROTOCOLS.has(protocol)) {
+    return;
+  }
+  shell.openExternal(url).catch((error: unknown) => {
+    console.error("Failed to open external link:", error);
+  });
+}
+
 /**
  * Lazily-created "About Burnbar" window: a static credits/links page. Unlike
  * {@link DashboardWindow} it needs no preload/IPC — the app version is its only
@@ -44,12 +64,12 @@ export class AboutWindow {
     // it never fires for our own loadFile call below (Electron only emits it
     // for user/page-initiated navigation).
     win.webContents.setWindowOpenHandler(({ url }) => {
-      void shell.openExternal(url);
+      openExternal(url);
       return { action: "deny" };
     });
     win.webContents.on("will-navigate", (event, url) => {
       event.preventDefault();
-      void shell.openExternal(url);
+      openExternal(url);
     });
 
     win.once("ready-to-show", () => {
@@ -60,9 +80,13 @@ export class AboutWindow {
       this.window = null;
     });
 
-    void win.loadFile(path.join(__dirname, "about", "index.html"), {
-      query: { version: app.getVersion() },
-    });
+    win
+      .loadFile(path.join(__dirname, "about", "index.html"), {
+        query: { version: app.getVersion() },
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to load About window:", error);
+      });
   }
 
   dispose(): void {

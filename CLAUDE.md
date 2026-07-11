@@ -163,12 +163,11 @@ src/
 │   ├── index.html
 │   └── card.ts        # Canvas → PNG stats card (__burnbarDrawCard)
 └── about/             # Browser-context About page (esbuild-bundled)
-    ├── index.html     # Credits + links markup
+    ├── index.html     # Credits + links markup (logo copied in at build time from assets/burnbar.svg)
     ├── about.css
-    ├── about.ts       # Injects app version from the loadFile query string
-    └── burnbar.svg    # App logo
+    └── about.ts       # Injects app version from the loadFile query string
 test/                  # Vitest unit tests + JSON fixtures
-scripts/build-renderer.mjs  # esbuild bundle for the renderers (dashboard + menu card)
+scripts/build-renderer.mjs  # esbuild bundle for the renderers (dashboard + menu card + about)
 assets/icon.png        # Tray icon
 dist/                  # tsc + esbuild output (git-ignored)
 release/               # electron-builder output (git-ignored)
