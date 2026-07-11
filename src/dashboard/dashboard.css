@@ -75,7 +75,7 @@ body {
 
 .controls {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
   gap: 12px;
   flex-wrap: wrap;
 }
@@ -163,6 +163,7 @@ body {
   display: inline-flex;
   gap: 6px;
   align-items: center;
+  margin-left: auto;
 }
 
 .export-btn {
