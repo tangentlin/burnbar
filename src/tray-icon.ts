@@ -39,6 +39,128 @@ export function badgeForStatus(status: UpdateStatus): UpdateBadge | null {
 const DOT_RADIUS_FRACTION = 0.28;
 const GAP_FRACTION = 0.05;
 
+// A small white glyph inside the dot signals *which* action is pending — an
+// up-arrow for "update available", a circular restart arrow for "ready to
+// install" — so the badge carries meaning, not just a color. Drawn in white
+// (reads on both dot colors) and supersampled so its edges stay smooth at
+// menu-bar size.
+const GLYPH_SUPERSAMPLE = 4;
+const GLYPH_WHITE: readonly [number, number, number] = [255, 255, 255];
+
+/** A shape membership test in device-pixel space (sub-pixel coordinates). */
+type ShapeTest = (px: number, py: number) => boolean;
+
+const mix = (from: number, to: number, t: number): number => Math.round(from * (1 - t) + to * t);
+
+/** Fraction (0..1) of the pixel [x,x+1]×[y,y+1] covered by `inside`, supersampled. */
+function coverage(x: number, y: number, inside: ShapeTest): number {
+  const step = 1 / GLYPH_SUPERSAMPLE;
+  let hits = 0;
+  for (let sy = 0; sy < GLYPH_SUPERSAMPLE; sy++) {
+    for (let sx = 0; sx < GLYPH_SUPERSAMPLE; sx++) {
+      if (inside(x + (sx + 0.5) * step, y + (sy + 0.5) * step)) {
+        hits++;
+      }
+    }
+  }
+  return hits / (GLYPH_SUPERSAMPLE * GLYPH_SUPERSAMPLE);
+}
+
+const cross = (px: number, py: number, ax: number, ay: number, bx: number, by: number): number =>
+  (px - bx) * (ay - by) - (ax - bx) * (py - by);
+
+/** Whether point (px,py) lies within triangle (a,b,c). */
+function inTriangle(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+): boolean {
+  const d1 = cross(px, py, ax, ay, bx, by);
+  const d2 = cross(px, py, bx, by, cx, cy);
+  const d3 = cross(px, py, cx, cy, ax, ay);
+  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+}
+
+/** An upward arrow (triangular head + stem) centered on the dot. */
+function upArrowTest(cx: number, cy: number, r: number): ShapeTest {
+  const h = r * 0.62; // half-height
+  const baseY = cy - h * 0.15; // where the head meets the stem
+  const headHalf = h * 0.9;
+  const stemHalf = h * 0.24;
+  return (px, py) => {
+    const ax = Math.abs(px - cx);
+    if (py >= cy - h && py <= baseY) {
+      const t = (py - (cy - h)) / (baseY - (cy - h)); // 0 at apex → 1 at base
+      if (ax <= t * headHalf) {
+        return true;
+      }
+    }
+    return py >= baseY && py <= cy + h && ax <= stemHalf;
+  };
+}
+
+/** A circular "restart" arrow: a ~280° ring with an arrowhead at its leading end. */
+function restartTest(cx: number, cy: number, r: number): ShapeTest {
+  const ar = r * 0.5; // ring radius
+  const sw = r * 0.17; // ring stroke half-width
+  const gapCenter = -Math.PI / 2; // the ring's opening sits at the top
+  const gapHalf = 0.85; // ~49° half-opening
+  const end = gapCenter + gapHalf; // arrowhead sits at the opening's right edge
+  const [ex, ey] = [cx + ar * Math.cos(end), cy + ar * Math.sin(end)];
+  const [tx, ty] = [-Math.sin(end), Math.cos(end)]; // tangent (direction of travel)
+  const [nx, ny] = [Math.cos(end), Math.sin(end)]; // radial (arrowhead width axis)
+  const tip = [ex + tx * sw * 2.4, ey + ty * sw * 2.4] as const;
+  const wingA = [ex + nx * sw * 1.9, ey + ny * sw * 1.9] as const;
+  const wingB = [ex - nx * sw * 1.9, ey - ny * sw * 1.9] as const;
+  return (px, py) => {
+    const dx = px - cx;
+    const dy = py - cy;
+    if (Math.abs(Math.hypot(dx, dy) - ar) <= sw) {
+      let ang = Math.atan2(dy, dx) - gapCenter;
+      while (ang > Math.PI) ang -= 2 * Math.PI;
+      while (ang <= -Math.PI) ang += 2 * Math.PI;
+      if (Math.abs(ang) > gapHalf) {
+        return true; // on the ring, outside the opening
+      }
+    }
+    return inTriangle(px, py, tip[0], tip[1], wingA[0], wingA[1], wingB[0], wingB[1]);
+  };
+}
+
+/** Blend the white action glyph over the (opaque) dot, anti-aliased via coverage. */
+function stampGlyph(
+  out: Uint8Array,
+  width: number,
+  height: number,
+  centerX: number,
+  centerY: number,
+  dotRadius: number,
+  badge: UpdateBadge,
+): void {
+  const inside = badge === "available" ? upArrowTest : restartTest;
+  const test = inside(centerX, centerY, dotRadius);
+  const reach = Math.ceil(dotRadius);
+  for (let y = Math.max(0, centerY - reach); y <= Math.min(height - 1, centerY + reach); y++) {
+    for (let x = Math.max(0, centerX - reach); x <= Math.min(width - 1, centerX + reach); x++) {
+      const cov = coverage(x, y, test);
+      if (cov <= 0) {
+        continue;
+      }
+      const idx = (y * width + x) * 4;
+      // out is premultiplied BGRA and the dot is opaque, so blend per channel
+      // (BGRA order) and leave alpha at 255.
+      out[idx] = mix(out[idx], GLYPH_WHITE[2], cov);
+      out[idx + 1] = mix(out[idx + 1], GLYPH_WHITE[1], cov);
+      out[idx + 2] = mix(out[idx + 2], GLYPH_WHITE[0], cov);
+    }
+  }
+}
+
 /**
  * Composite a **non-template** menu-bar icon from the template glyph's bitmap:
  * recolor the glyph to the menu foreground (white on a dark bar, black on a light
@@ -103,6 +225,9 @@ export function composeBadgedIconBitmap(
       }
     }
   }
+
+  // 3) Stamp the action glyph inside the dot (up-arrow / restart arrow).
+  stampGlyph(out, width, height, centerX, centerY, dotRadius, badge);
 
   return out;
 }

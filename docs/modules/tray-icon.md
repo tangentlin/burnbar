@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The **pure** compositor for the menu-bar icon's update badge: given the template glyph's raw bitmap, it produces a non-template variant that recolors the glyph for the current menu appearance and stamps a colored status dot. Kept Electron-free and working on plain `Uint8Array`s (not Node `Buffer`s), so the **exact same function** runs both in the main process (unit-tested, no `NativeImage`) and in the browser — the [Storybook](../storybook.md) badge story paints it to a canvas. Introduced with [ADR-011's attention-cues amendment](../adr/011-auto-update-mechanism.md#amendment-attention-cues-2026-07); the default icon stays a template per [ADR-004](../adr/004-template-tray-icon.md).
+The **pure** compositor for the menu-bar icon's update badge: given the template glyph's raw bitmap, it produces a non-template variant that recolors the glyph for the current menu appearance, stamps a colored status dot, and paints a small white **action glyph** inside it (an up-arrow for `available`, a circular restart arrow for `downloaded`) so the badge carries meaning, not just a color. Kept Electron-free and working on plain `Uint8Array`s (not Node `Buffer`s), so the **exact same function** runs both in the main process (unit-tested, no `NativeImage`) and in the browser — the [Storybook](../storybook.md) badge story paints it to a canvas. Introduced with [ADR-011's attention-cues amendment](../adr/011-auto-update-mechanism.md#amendment-attention-cues-2026-07); the default icon stays a template per [ADR-004](../adr/004-template-tray-icon.md).
 
 ## Public Surface
 
@@ -19,6 +19,7 @@ The **pure** compositor for the menu-bar icon's update badge: given the template
 - Map the update lifecycle to a badge: only `available` / `downloaded` warrant one; every other state returns `null` (plain template icon). — `badgeForStatus`
 - Recolor the glyph to the menu foreground (white on a dark bar, black on a light one) by reading only the source **alpha**, so it's independent of RGB channel order.
 - Stamp an opaque colored dot (bottom-right) ringed by a transparent "cutout" gap so it reads as a distinct mark, scaled as fractions of the icon width.
+- Paint a white action glyph inside the dot — an **up-arrow** (`available`) or a **circular restart arrow** (`downloaded`) — supersampled for smooth edges at menu-bar size, so the dot's color *and* shape both convey which action is pending.
 
 ## Non-Goals
 

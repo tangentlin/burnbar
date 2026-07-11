@@ -13,9 +13,9 @@ As a user running an older Burnbar build, I want to be notified a newer signed r
 
 1. **Idle** — the tray shows a "Check for Updates" row (also fires automatically every 4 hours in the background).
 2. **Checking** — clicking it (or the background timer firing) shows "Checking for Updates..." (disabled) briefly.
-3. **Available** — a newer signed release exists: the row becomes "Download Update (vX.Y.Z)..." (clickable), the **tray icon gains a blue dot**, and an **"update available" notification** fires (clicking it starts the download). Nothing downloads until the user acts.
+3. **Available** — a newer signed release exists: the row becomes "Download Update (vX.Y.Z)..." (clickable), the **tray icon gains a blue dot with an up-arrow**, and an **"update available" notification** fires (clicking it starts the download). Nothing downloads until the user acts.
 4. **Downloading** — the row shows "Downloading... NN%" (disabled) while electron-updater fetches and verifies the update. No badge (nothing is waiting on the user).
-5. **Downloaded** — the row becomes "Restart to Update" (clickable), the **tray icon gains an orange dot**, and a **"ready to install" notification** fires (informational — it does *not* restart on click). The update sits ready, installed on no schedule but the user's own — quitting/relaunching Burnbar any other way does **not** install it.
+5. **Downloaded** — the row becomes "Restart to Update" (clickable), the **tray icon gains an orange dot with a restart arrow**, and a **"ready to install" notification** fires (informational — it does *not* restart on click). The update sits ready, installed on no schedule but the user's own — quitting/relaunching Burnbar any other way does **not** install it.
 6. **Restart to Update** — clicking the tray row installs and relaunches. This is the *only* action in the app that triggers an install; the notification never does.
 7. **After relaunch** — on the freshly installed version, a one-time **"Burnbar updated" notification** confirms the new version (detected by comparing the running version to the persisted `lastRunVersion`).
 
@@ -30,7 +30,7 @@ If a check or download fails, the row falls back to "Check for Updates" (idle-eq
 - [ ] The background check cadence (4h) runs independently of the user-configurable usage-refresh interval, including when that interval is `0`/manual. — [update-service.ts](../../src/update-service.ts), [settings.ts](../../src/settings.ts)
 - [ ] Only signed + notarized payloads install — enforced by electron-updater/Squirrel.Mac, not hand-rolled verification. — [ADR-011](../adr/011-auto-update-mechanism.md)
 - [ ] Exactly one update row is always present in the tray menu; its label reflects the current state (no separate "Up to date" row). — [tray.ts](../../src/tray.ts)
-- [ ] The tray icon shows a colored badge (blue = available, orange = downloaded) only while an update needs action, and the default icon stays a macOS template. — [tray-icon.ts](../../src/tray-icon.ts), [tray.ts](../../src/tray.ts), [ADR-004](../adr/004-template-tray-icon.md)
+- [ ] The tray icon shows a colored badge with an action glyph (blue + up-arrow = available, orange + restart arrow = downloaded) only while an update needs action, and the default icon stays a macOS template. — [tray-icon.ts](../../src/tray-icon.ts), [tray.ts](../../src/tray.ts), [ADR-004](../adr/004-template-tray-icon.md)
 - [ ] Notifications fire once per actionable transition (available → click downloads; downloaded → informational) plus a one-time post-restart confirmation, and never on errors. — [update-notifier.ts](../../src/update-notifier.ts)
 - [ ] A notification click never installs — `quitAndInstall()` stays reachable only from the tray's "Restart to Update" click. — [main.ts](../../src/main.ts), [ADR-011](../adr/011-auto-update-mechanism.md)
 

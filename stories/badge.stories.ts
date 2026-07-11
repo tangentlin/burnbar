@@ -77,8 +77,8 @@ function bitmapToCanvas(out: Uint8Array, width: number, height: number): HTMLCan
 }
 
 const BADGES: { badge: UpdateBadge; label: string }[] = [
-  { badge: "available", label: "available → blue (download)" },
-  { badge: "downloaded", label: "downloaded → orange (restart)" },
+  { badge: "available", label: "available → blue + up-arrow" },
+  { badge: "downloaded", label: "downloaded → orange + restart arrow" },
 ];
 
 const APPEARANCES: { appearance: IconAppearance; bg: string; fg: string }[] = [
