@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self';"
+    />
+    <title>About Burnbar</title>
+    <link rel="stylesheet" href="about.css" />
+  </head>
+  <body>
+    <main class="about">
+      <img class="logo" src="burnbar.svg" alt="" width="72" height="72" />
+      <h1 class="app-name">Burnbar</h1>
+      <p class="version" id="version">Version —</p>
+      <p class="tagline">Menu bar token burn &amp; cost tracker for Claude Code</p>
+
+      <a
+        class="callout"
+        href="https://github.com/tangentlin/burnbar"
+        target="_blank"
+        rel="noopener"
+      >
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M8 .2a8 8 0 0 0-2.53 15.59c.4.08.55-.17.55-.38l-.01-1.49c-2.23.48-2.7-1.07-2.7-1.07-.36-.93-.89-1.17-.89-1.17-.72-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.23 1.87.87 2.33.67.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.96 0-.88.31-1.59.83-2.15-.08-.2-.36-1.02.08-2.13 0 0 .67-.22 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.11.16 1.93.08 2.13.52.56.83 1.27.83 2.15 0 3.08-1.87 3.76-3.66 3.96.29.25.54.73.54 1.48l-.01 2.2c0 .21.15.46.55.38A8 8 0 0 0 8 .2Z"
+          />
+        </svg>
+        <span>View Burnbar on GitHub</span>
+      </a>
+
+      <section class="credits" aria-label="Credits">
+        <h2>Credits</h2>
+        <ul>
+          <li>
+            <div class="credit-main">
+              <span class="credit-label">Powered by</span>
+              <a href="https://github.com/ryoppippi/ccusage" target="_blank" rel="noopener"
+                >ccusage</a
+              >
+            </div>
+            <p class="credit-note">
+              Reads local agent logs and prices usage — the CLI Burnbar runs on.
+            </p>
+          </li>
+          <li>
+            <div class="credit-main">
+              <span class="credit-label">Forked from</span>
+              <a
+                href="https://github.com/penicillin0/claude-usage-tracker-for-mac"
+                target="_blank"
+                rel="noopener"
+                >claude-usage-tracker-for-mac</a
+              >
+            </div>
+            <p class="credit-note">by Nakamura Ayahito</p>
+          </li>
+          <li>
+            <div class="credit-main">
+              <span class="credit-label">Artwork by</span>
+              <a href="https://github.com/xzavios" target="_blank" rel="noopener">Chris Leyva</a>
+            </div>
+            <p class="credit-note">The Burnbar flame icon.</p>
+          </li>
+        </ul>
+      </section>
+
+      <footer class="social">
+        <a
+          href="https://github.com/tangentlin"
+          target="_blank"
+          rel="noopener"
+          aria-label="tangentlin on GitHub"
+        >
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M8 .2a8 8 0 0 0-2.53 15.59c.4.08.55-.17.55-.38l-.01-1.49c-2.23.48-2.7-1.07-2.7-1.07-.36-.93-.89-1.17-.89-1.17-.72-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.71 1.23 1.87.87 2.33.67.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.96 0-.88.31-1.59.83-2.15-.08-.2-.36-1.02.08-2.13 0 0 .67-.22 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.11.16 1.93.08 2.13.52.56.83 1.27.83 2.15 0 3.08-1.87 3.76-3.66 3.96.29.25.54.73.54 1.48l-.01 2.2c0 .21.15.46.55.38A8 8 0 0 0 8 .2Z"
+            />
+          </svg>
+          <span>tangentlin</span>
+        </a>
+        <a
+          class="x-link"
+          href="https://x.com/tangentlin"
+          target="_blank"
+          rel="noopener"
+          aria-label="tangentlin on X"
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M9.53 6.78 15.03 0h-1.6L8.8 5.88 4.9 0H0l5.9 8.72L0 16h1.6l4.9-6.2 4.14 6.2H16L9.53 6.78Zm-1.73 2.2-.57-.83L2.2 1.3h2.02l3.65 5.27.57.83 4.9 7.06H11.3L7.8 8.98Z"
+            />
+          </svg>
+          <span>@tangentlin</span>
+        </a>
+      </footer>
+    </main>
+    <script type="module" src="about.js"></script>
+  </body>
+</html>

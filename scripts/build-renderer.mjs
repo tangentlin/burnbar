@@ -15,9 +15,12 @@ const dashboardSrc = path.join(srcRoot, "dashboard");
 const dashboardOut = path.join(distRoot, "dashboard");
 const cardSrc = path.join(srcRoot, "menu-card");
 const cardOut = path.join(distRoot, "menu-card");
+const aboutSrc = path.join(srcRoot, "about");
+const aboutOut = path.join(distRoot, "about");
 
 await mkdir(dashboardOut, { recursive: true });
 await mkdir(cardOut, { recursive: true });
+await mkdir(aboutOut, { recursive: true });
 
 const bundle = (entry, outfile) =>
   esbuild.build({
@@ -33,7 +36,11 @@ const bundle = (entry, outfile) =>
 
 await bundle(path.join(dashboardSrc, "renderer.ts"), path.join(dashboardOut, "renderer.js"));
 await bundle(path.join(cardSrc, "card.ts"), path.join(cardOut, "card.js"));
+await bundle(path.join(aboutSrc, "about.ts"), path.join(aboutOut, "about.js"));
 
 await cp(path.join(dashboardSrc, "index.html"), path.join(dashboardOut, "index.html"));
 await cp(path.join(dashboardSrc, "dashboard.css"), path.join(dashboardOut, "dashboard.css"));
 await cp(path.join(cardSrc, "index.html"), path.join(cardOut, "index.html"));
+await cp(path.join(aboutSrc, "index.html"), path.join(aboutOut, "index.html"));
+await cp(path.join(aboutSrc, "about.css"), path.join(aboutOut, "about.css"));
+await cp(path.join(aboutSrc, "burnbar.svg"), path.join(aboutOut, "burnbar.svg"));

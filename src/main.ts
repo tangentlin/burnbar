@@ -1,5 +1,6 @@
 import { app, shell } from "electron";
 import * as path from "node:path";
+import { AboutWindow } from "./about-window.js";
 import { CaptureService } from "./capture-service.js";
 import { registerArchiveIpc } from "./ipc.js";
 import { BurnbarLogger } from "./logger.js";
@@ -15,11 +16,11 @@ import { DashboardWindow } from "./window.js";
 
 // Bound the final flush so a hung ccusage can never block app shutdown.
 const QUIT_FLUSH_TIMEOUT_MS = 5_000;
-const GITHUB_URL = "https://github.com/tangentlin/burnbar";
 
 let captureService: CaptureService | null = null;
 let trayManager: TrayManager | null = null;
 let dashboardWindow: DashboardWindow | null = null;
+let aboutWindow: AboutWindow | null = null;
 let menuCardRenderer: MenuCardRenderer | null = null;
 let updateService: UpdateService | null = null;
 
@@ -63,6 +64,7 @@ app.whenReady().then(async () => {
   // is passive (restart stays the tray's sole quitAndInstall click) — see ADR-011.
   const updateNotifier = new UpdateNotifier(() => void updates.downloadUpdate(), { logger });
   const dashboard = new DashboardWindow();
+  const about = new AboutWindow();
   const menuCard = new MenuCardRenderer();
   const tray = new TrayManager(
     {
@@ -76,11 +78,7 @@ app.whenReady().then(async () => {
           logger.log("error", "Failed to persist refresh interval", error);
         });
       },
-      onAbout: () => {
-        shell.openExternal(GITHUB_URL).catch((error: unknown) => {
-          logger.log("error", "Failed to open About link", error);
-        });
-      },
+      onAbout: () => about.open(),
       onOpenLogFolder: () => {
         shell.openPath(logger.logsDir).catch((error: unknown) => {
           logger.log("error", "Failed to open log folder", error);
@@ -107,6 +105,7 @@ app.whenReady().then(async () => {
   captureService = service;
   trayManager = tray;
   dashboardWindow = dashboard;
+  aboutWindow = about;
   menuCardRenderer = menuCard;
   updateService = updates;
 
@@ -144,6 +143,7 @@ app.on("before-quit", (event) => {
     captureService?.dispose();
     trayManager?.dispose();
     dashboardWindow?.dispose();
+    aboutWindow?.dispose();
     menuCardRenderer?.dispose();
     updateService?.dispose();
     return;

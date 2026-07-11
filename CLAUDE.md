@@ -85,7 +85,7 @@ npm run dist:mac     # Build DMG and ZIP for macOS (arm64 / Apple Silicon only)
 
 Single Electron **main** process, tray-first, with one on-demand dashboard window. The full module map and data-flow diagrams live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — this is the orientation:
 
-- **`src/main.ts`** — wires the collaborators (`ArchiveStore`, `CaptureService`, `UpdateService`, `TrayManager`, `DashboardWindow`, archive IPC), hides the Dock, and runs a bounded quit-time flush.
+- **`src/main.ts`** — wires the collaborators (`ArchiveStore`, `CaptureService`, `UpdateService`, `TrayManager`, `DashboardWindow`, `AboutWindow`, archive IPC), hides the Dock, and runs a bounded quit-time flush.
 - **`src/capture-service.ts`** — `CaptureService` owns the single ccusage `daily` call that feeds **both** the tray and the archive on the configurable refresh interval (default 15 min; `0` = manual) plus "Refresh Now" (sessions on launch / day-rollover / quit). Best-effort: a failure never crashes the tray.
 - **`src/capture.ts`** — spawns ccusage through a dependency-injected runner and normalizes `daily`/`session` reports into archive records; also derives the tray `UsageData`. (Absorbed the old `usage.ts`.)
 - **`src/store.ts`** — `ArchiveStore`: the **pure** "keep richest, never shrink" merge plus atomic temp-then-rename JSON IO, monthly-sharded sessions, and the manifest. Highest-stakes module.
@@ -94,6 +94,7 @@ Single Electron **main** process, tray-first, with one on-demand dashboard windo
 - **`src/tray.ts`** — **display-only** `TrayManager`: renders the pushed state as a rich bitmap "stats card" (today + 30-day spend/tokens, bar chart, top model) plus Refresh / Auto-Refresh / Open Dashboard / **About Burnbar** / the state-driven update row.
 - **`src/menu-card-window.ts` / `src/menu-card/`** — the card renderer: `MenuCardRenderer` drives a hidden `BrowserWindow` whose canvas (`__burnbarDrawCard`) draws the card and returns a PNG the tray shows as a menu-item icon. See [docs/adr/009](docs/adr/009-menu-stats-card.md).
 - **`src/ipc.ts` / `src/preload.mts` / `src/window.ts` / `src/dashboard/`** — the read-only `archive:get-series` channel and the Chart.js dashboard (contextIsolation on, nodeIntegration off).
+- **`src/about-window.ts` / `src/about/`** — `AboutWindow`: a static credits/links page (app version, ccusage, the forked-from app, the icon artist, GitHub + social links) with no preload/IPC; every link opens via `shell.openExternal`.
 - **`src/update-service.ts`** — `UpdateService` owns the electron-updater lifecycle (check/download/install) on its own fixed 4h timer, independent of the usage-refresh interval. `autoDownload` is always `false`; `quitAndInstall()` only fires from the tray's explicit "Restart to Update" click. See [docs/adr/011](docs/adr/011-auto-update-mechanism.md).
 - **`src/types.ts`** — shared contracts: tray DTOs, ccusage raw subset, archive records, dashboard series, update state.
 
@@ -151,15 +152,21 @@ src/
 ├── ipc.ts             # Read-only archive:get-series handler
 ├── preload.mts        # contextBridge → window.burnbar.getSeries (→ preload.mjs)
 ├── window.ts          # DashboardWindow (BrowserWindow + security)
+├── about-window.ts    # AboutWindow: static credits/links window, no preload/IPC
 ├── update-service.ts  # UpdateService: electron-updater check/download/install lifecycle
 ├── types.ts           # Shared types incl. archive records + series + update state
 ├── dashboard/         # Browser-context renderer (esbuild-bundled)
 │   ├── index.html
 │   ├── renderer.ts    # Chart.js wiring, range/dimension toggles
 │   └── dashboard.css
-└── menu-card/         # Browser-context card renderer (esbuild-bundled)
-    ├── index.html
-    └── card.ts        # Canvas → PNG stats card (__burnbarDrawCard)
+├── menu-card/         # Browser-context card renderer (esbuild-bundled)
+│   ├── index.html
+│   └── card.ts        # Canvas → PNG stats card (__burnbarDrawCard)
+└── about/             # Browser-context About page (esbuild-bundled)
+    ├── index.html     # Credits + links markup
+    ├── about.css
+    ├── about.ts       # Injects app version from the loadFile query string
+    └── burnbar.svg    # App logo
 test/                  # Vitest unit tests + JSON fixtures
 scripts/build-renderer.mjs  # esbuild bundle for the renderers (dashboard + menu card)
 assets/icon.png        # Tray icon

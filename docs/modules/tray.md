@@ -105,9 +105,10 @@ flowchart LR
 - [update-notifier.ts](../../src/update-notifier.ts) → [update-notifier.md](./update-notifier.md) — the companion notifier for the same `UpdateState` transitions.
 - [menu-card-window.ts](../../src/menu-card-window.ts) → [menu-card-window.md](./menu-card-window.md) — the injected `MenuCardRenderer` that rasterizes the card bitmap.
 - [menu-card/](../../src/menu-card/) → [menu-card.md](./menu-card.md) — the browser-context canvas that draws the card.
-- [main.ts](../../src/main.ts) — wires the `TrayCallbacks` (incl. `onAbout` → GitHub, `onCheckForUpdates`/`onDownloadUpdate`/`onRestartToUpdate` → `UpdateService`) and the `MenuCardRenderer` to the service, window, and settings.
+- [main.ts](../../src/main.ts) — wires the `TrayCallbacks` (incl. `onAbout` → [`AboutWindow`](./about-window.md), `onCheckForUpdates`/`onDownloadUpdate`/`onRestartToUpdate` → `UpdateService`) and the `MenuCardRenderer` to the service, window, and settings.
 - [window.ts](../../src/window.ts) — opened by the card row and the dashboard menu item.
+- [about-window.ts](../../src/about-window.ts) — opened by the About Burnbar row.
 - [time.ts](../../src/time.ts) — the relative-time / interval-label formatters.
 - [settings.ts](../../src/settings.ts) — `REFRESH_PRESETS_MINUTES` and interval persistence.
-- Sibling docs: [capture-service](./capture-service.md), [update-service](./update-service.md), [settings](./settings.md), [menu-card-window](./menu-card-window.md), [menu-card](./menu-card.md), [time](./time.md), [window](./window.md), [types](./types.md).
-- Feature: [usage-menu.md](../features/usage-menu.md), [usage-refresh.md](../features/usage-refresh.md), [usage-dashboard.md](../features/usage-dashboard.md), [auto-update.md](../features/auto-update.md).
+- Sibling docs: [capture-service](./capture-service.md), [update-service](./update-service.md), [settings](./settings.md), [menu-card-window](./menu-card-window.md), [menu-card](./menu-card.md), [time](./time.md), [window](./window.md), [about-window](./about-window.md), [types](./types.md).
+- Feature: [usage-menu.md](../features/usage-menu.md), [usage-refresh.md](../features/usage-refresh.md), [usage-dashboard.md](../features/usage-dashboard.md), [about.md](../features/about.md), [auto-update.md](../features/auto-update.md).

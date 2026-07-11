@@ -2,11 +2,11 @@
 
 ## Purpose
 
-Electron main-process entry point. Builds the object graph — `ArchiveStore`, `SettingsStore`, `CaptureService`, `UpdateService`, `UpdateNotifier`, `MenuCardRenderer`, `TrayManager`, `DashboardWindow` (plus the archive IPC) — wires the tray's actions to the service, settings, and updater, and enforces menu-bar-only behavior with a bounded quit-time flush.
+Electron main-process entry point. Builds the object graph — `ArchiveStore`, `SettingsStore`, `CaptureService`, `UpdateService`, `UpdateNotifier`, `MenuCardRenderer`, `TrayManager`, `DashboardWindow`, `AboutWindow` (plus the archive IPC) — wires the tray's actions to the service, settings, and updater, and enforces menu-bar-only behavior with a bounded quit-time flush.
 
 ## Public Surface
 
-No exports — this is the executable entry (`package.json#main` → `dist/main.js`). Module-private state: the singleton `captureService`/`trayManager`/`dashboardWindow`/`menuCardRenderer`/`updateService` handles, the `GITHUB_URL` About target, and the `quitting` latch. — [main.ts:18-22](../../src/main.ts#L18-L22)
+No exports — this is the executable entry (`package.json#main` → `dist/main.js`). Module-private state: the singleton `captureService`/`trayManager`/`dashboardWindow`/`aboutWindow`/`menuCardRenderer`/`updateService` handles, and the `quitting` latch. — [main.ts:20-25](../../src/main.ts#L20-L25)
 
 ## Responsibilities
 
@@ -15,7 +15,7 @@ No exports — this is the executable entry (`package.json#main` → `dist/main.
 - Construct the `CaptureService`, seeding `refreshIntervalMinutes` from the loaded settings, and the `UpdateService` (fixed cadence, no settings seed — see [update-service](./update-service.md)). — [main.ts:41-47](../../src/main.ts#L41-L47)
 - Record the running `app.getVersion()` into `settings.lastRunVersion` (fire-and-forget) and remember the previous value, so a changed version after relaunch is detected as a just-installed update. — [main.ts](../../src/main.ts)
 - Construct the `UpdateNotifier` with `() => updates.downloadUpdate()` as the "available" notification's click action (download-auto / restart-passive, see [update-notifier](./update-notifier.md)). — [main.ts](../../src/main.ts)
-- Construct the `DashboardWindow` and `MenuCardRenderer`, then the `TrayManager` (passing the renderer), wiring `TrayCallbacks`: `onOpenDashboard` → `dashboard.open()`, `onRefreshNow` → `service.refreshNow()`, `onSetRefreshInterval` → `service.setRefreshIntervalMinutes(m)` then persist via `settings.setRefreshIntervalMinutes(m)`, `onAbout` → `shell.openExternal(GITHUB_URL)`, `onOpenLogFolder`/`onCopyDiagnostics` → `logger` helpers, and `onCheckForUpdates`/`onDownloadUpdate`/`onRestartToUpdate` → `updateService.checkNow()`/`downloadUpdate()`/`quitAndInstall()` (each write/open failure is logged, never an unhandled rejection). — [main.ts:50-88](../../src/main.ts#L50-L88)
+- Construct the `DashboardWindow`, `AboutWindow`, and `MenuCardRenderer`, then the `TrayManager` (passing the renderer), wiring `TrayCallbacks`: `onOpenDashboard` → `dashboard.open()`, `onRefreshNow` → `service.refreshNow()`, `onSetRefreshInterval` → `service.setRefreshIntervalMinutes(m)` then persist via `settings.setRefreshIntervalMinutes(m)`, `onAbout` → `about.open()` (see [about-window](./about-window.md)), `onOpenLogFolder`/`onCopyDiagnostics` → `logger` helpers, and `onCheckForUpdates`/`onDownloadUpdate`/`onRestartToUpdate` → `updateService.checkNow()`/`downloadUpdate()`/`quitAndInstall()` (each write/open failure is logged, never an unhandled rejection). — [main.ts:56-103](../../src/main.ts#L56-L103)
 - Register the read-only archive IPC, initialize the tray, subscribe it to usage state (`service.onState(state => tray.render(state))`), and fan update state out to **both** the tray and the notifier (`updates.onState(state => { tray.renderUpdate(state); updateNotifier.handle(state); })`); if the recorded version changed since last launch, `announceInstalled()` once; then `start()` both services. — [main.ts](../../src/main.ts)
 - On `before-quit`, defer once and run a bounded final flush so the last interval persists, then tear down (including `updateService.dispose()`). — [main.ts:106-136](../../src/main.ts#L106-L136)
 
@@ -25,6 +25,7 @@ No exports — this is the executable entry (`package.json#main` → `dist/main.
 - No update check/download/install logic — delegated to [update-service](./update-service.md); `main.ts` only wires the tray's clicks to it (and is the **sole** caller of `quitAndInstall()` — see [ADR-011](../adr/011-auto-update-mechanism.md)).
 - No settings sanitization or atomic write — owned by [settings](./settings.md) (and `atomicWriteJson` from [store](./store.md)).
 - No dashboard rendering or archive querying — delegated to [window](./window.md) / [ipc](./ipc.md).
+- No About/credits UI — delegated to [about-window](./about-window.md); `main.ts` only wires `onAbout` to `about.open()`.
 
 ## How It Works
 
@@ -40,6 +41,7 @@ flowchart TD
     ready --> card["new MenuCardRenderer"]
     card --> tray["new TrayManager(TrayCallbacks, cardRenderer)"]
     ready --> win["new DashboardWindow"]
+    ready --> about["new AboutWindow"]
     ready --> ipc["registerArchiveIpc(store, tz)"]
     svc -->|onState| tray
     upd -->|onState| tray
@@ -75,12 +77,12 @@ flowchart TD
 ## Extension Points
 
 - New persisted preferences: extend [settings](./settings.md) + `AppSettings`, then thread the value through the `CaptureService` construction here.
-- New tray actions: add a field to `TrayCallbacks` and wire it in the `TrayManager` constructor call (e.g. `onAbout` opening `GITHUB_URL`). — [main.ts:50-88](../../src/main.ts#L50-L88)
+- New tray actions: add a field to `TrayCallbacks` and wire it in the `TrayManager` constructor call (e.g. `onAbout` opening the `AboutWindow`). — [main.ts:56-103](../../src/main.ts#L56-L103)
 - New main-process IPC: register alongside `registerArchiveIpc`. — [main.ts:96](../../src/main.ts#L96)
 - New update-lifecycle behavior: change [update-service.ts](../../src/update-service.ts); `main.ts` only needs new wiring if a new tray-facing action is added.
 
 ## Related Files
 
-- [capture-service.ts](../../src/capture-service.ts), [update-service.ts](../../src/update-service.ts), [settings.ts](../../src/settings.ts), [tray.ts](../../src/tray.ts), [menu-card-window.ts](../../src/menu-card-window.ts), [window.ts](../../src/window.ts), [ipc.ts](../../src/ipc.ts), [store.ts](../../src/store.ts) — the wired collaborators.
-- Sibling docs: [capture-service](./capture-service.md), [update-service](./update-service.md), [update-notifier](./update-notifier.md), [settings](./settings.md), [tray](./tray.md), [tray-icon](./tray-icon.md), [menu-card-window](./menu-card-window.md), [window](./window.md), [ipc](./ipc.md), [store](./store.md), [types](./types.md).
+- [capture-service.ts](../../src/capture-service.ts), [update-service.ts](../../src/update-service.ts), [settings.ts](../../src/settings.ts), [tray.ts](../../src/tray.ts), [menu-card-window.ts](../../src/menu-card-window.ts), [window.ts](../../src/window.ts), [about-window.ts](../../src/about-window.ts), [ipc.ts](../../src/ipc.ts), [store.ts](../../src/store.ts) — the wired collaborators.
+- Sibling docs: [capture-service](./capture-service.md), [update-service](./update-service.md), [update-notifier](./update-notifier.md), [settings](./settings.md), [tray](./tray.md), [tray-icon](./tray-icon.md), [menu-card-window](./menu-card-window.md), [window](./window.md), [about-window](./about-window.md), [ipc](./ipc.md), [store](./store.md), [types](./types.md).
 - [ARCHITECTURE.md](../ARCHITECTURE.md) for the overall graph; features: [usage-refresh.md](../features/usage-refresh.md), [auto-update.md](../features/auto-update.md).

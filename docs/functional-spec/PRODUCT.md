@@ -20,8 +20,13 @@
 ### Usage Breakdown
 - **MUST** show, on click, an at-a-glance card with today's and 30-day spend and token counts, a recent spend-over-time chart, and the top model by cost.
 - **MUST** format tokens compactly and cost as USD; the card is a display-only banner (not selectable).
-- **MUST** offer an "Open Usage Dashboard…" action directly beneath the card, an "About Burnbar" link (labeled with the app version) to the project page, and a Quit action; the Dashboard and Refresh actions carry icons.
+- **MUST** offer an "Open Usage Dashboard…" action directly beneath the card, an "About Burnbar" link (labeled with the app version) that opens a credits window, and a Quit action; the Dashboard and Refresh actions carry icons.
 - **MUST** degrade to a plain-text today's-usage row when the card can't be rendered, and to a clear error indication when usage data can't be read.
+
+### About / Credits
+- **MUST** show the app name, version, and a credits list crediting ccusage (the CLI Burnbar runs on), the app it was forked from (with original author), and the app icon's artist — each as a clickable link to its source.
+- **MUST** offer a prominent link to Burnbar's own GitHub page, and links to the maintainer's GitHub and X/Twitter profiles.
+- **MUST** open every credit/social link in the system browser, never inside the app.
 
 ### Durable Usage Archive
 - **MUST** persist usage history locally so it survives the source tools purging their logs.
@@ -91,6 +96,11 @@ erDiagram
 1. Click the menu-bar icon.
 2. Read the stats card — today's and 30-day cost + tokens, the spend chart, and the top model.
 3. Choose "Open Usage Dashboard…" (just below the card) for all-time totals and breakdowns, or Quit from the same menu.
+
+### See who's behind it
+1. Choose "About Burnbar" from the tray menu.
+2. Read the credits — ccusage, the forked-from app, the icon artist — and follow any link to its source.
+3. Follow the GitHub callout or the maintainer's profile links, or close the window.
 
 ### Review usage history
 1. Open "Open Usage Dashboard…" from the tray menu.
