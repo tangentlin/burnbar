@@ -12,6 +12,7 @@
 | `TrayManager` | Display-only menu-bar rendering + "Open Usage Dashboard…" | [tray.ts](../src/tray.ts) |
 | `MenuCardRenderer` | Hidden window rasterizing the menu stats card to a `NativeImage` | [menu-card-window.ts](../src/menu-card-window.ts) |
 | `DashboardWindow` + `registerArchiveIpc` | Chart.js window; read-only `archive:get-series` channel | [window.ts](../src/window.ts), [ipc.ts](../src/ipc.ts) |
+| `AboutWindow` | Static credits/links window — no preload/IPC | [about-window.ts](../src/about-window.ts) |
 | `UpdateService` | electron-updater lifecycle (check/download/install) feeding the tray's update row | [update-service.ts](../src/update-service.ts) |
 | `UpdateNotifier` | OS notifications on the actionable update transitions + post-restart confirmation | [update-notifier.ts](../src/update-notifier.ts) |
 | `pnpm build:renderer` | esbuild-bundle both browser renderers — the dashboard (+ Chart.js) and the menu card | [scripts/build-renderer.mjs](../scripts/build-renderer.mjs) |
@@ -27,6 +28,7 @@ flowchart TD
     main --> card["MenuCardRenderer<br/>(hidden window)"]
     main --> ipc["registerArchiveIpc"]
     main --> win["DashboardWindow"]
+    main --> about["AboutWindow (no preload/IPC)"]
     main --> upd["UpdateService"]
     svc -->|runDaily/Session| capture["capture.ts<br/>spawn + normalize"]
     capture -->|execFile ELECTRON_RUN_AS_NODE| ccusage["ccusage CLI"]
@@ -50,7 +52,7 @@ flowchart TD
     notif -->|Notification| os[("macOS Notification Center")]
 ```
 
-Single Electron **main** process. The tray-only design grew two browser **renderers**: the on-demand dashboard window, and a hidden, never-shown window the tray drives to rasterize its stats card. [main.ts](../src/main.ts) wires the parts; [capture-service.ts](../src/capture-service.ts) owns the one external call and is the only writer of the archive; [tray.ts](../src/tray.ts) is a pure display consumer that asks [menu-card-window.ts](../src/menu-card-window.ts) to paint its card and renders [update-service.ts](../src/update-service.ts)'s state into a single tray-only update row; the dashboard reads the archive only through the `burnbar.getSeries` preload channel. Pure logic lives in [store.ts](../src/store.ts) (merge) and [derive.ts](../src/derive.ts) (series) and is unit-tested in isolation.
+Single Electron **main** process. The tray-only design grew three browser **renderers**: the on-demand dashboard window, a hidden, never-shown window the tray drives to rasterize its stats card, and the on-demand About window. [main.ts](../src/main.ts) wires the parts; [capture-service.ts](../src/capture-service.ts) owns the one external call and is the only writer of the archive; [tray.ts](../src/tray.ts) is a pure display consumer that asks [menu-card-window.ts](../src/menu-card-window.ts) to paint its card and renders [update-service.ts](../src/update-service.ts)'s state into a single tray-only update row; the dashboard reads the archive only through the `burnbar.getSeries` preload channel. The About window is the odd one out: static credits/links content with no preload and no IPC — see [about-window.ts](../src/about-window.ts). Pure logic lives in [store.ts](../src/store.ts) (merge) and [derive.ts](../src/derive.ts) (series) and is unit-tested in isolation.
 
 ## Data Flow
 
@@ -84,7 +86,7 @@ The renderer asks `window.burnbar.getSeries({range, dimension})`; the preload fo
 
 - **The archive is the only persistent state** — per-day JSON, monthly-sharded sessions, and a manifest under `userData/archive`. Each merge is atomic and idempotent. — [store.ts](../src/store.ts), [ADR-006](./adr/006-durable-usage-archive.md)
 - `CaptureService` holds the refresh timer, the latest `UsageData`, an in-memory `dailyCache` (mirrors disk to skip unchanged days), and the day-rollover marker. — [capture-service.ts:40-47](../src/capture-service.ts#L40-L47)
-- The tray retains its `Tray` handle, the latest state, and the cached card bitmap (keyed by a signature of the card data, so the 60 s label tick reuses it); the dashboard window is created lazily and dropped on close; the menu-card window is created once and reused. — [tray.ts](../src/tray.ts), [menu-card-window.ts](../src/menu-card-window.ts), [window.ts](../src/window.ts)
+- The tray retains its `Tray` handle, the latest state, and the cached card bitmap (keyed by a signature of the card data, so the 60 s label tick reuses it); the dashboard and About windows are each created lazily and dropped on close; the menu-card window is created once and reused. — [tray.ts](../src/tray.ts), [menu-card-window.ts](../src/menu-card-window.ts), [window.ts](../src/window.ts), [about-window.ts](../src/about-window.ts)
 - `UpdateService` holds its own fixed-interval timer (independent of the usage-refresh interval) and the latest `UpdateState`; `main.ts` fans that state out to the tray (a single state-driven menu row **plus** a colored icon badge on the actionable states, composited by the pure [tray-icon.ts](../src/tray-icon.ts)) and to [UpdateNotifier](../src/update-notifier.ts) (OS notifications on the actionable transitions + a post-restart confirmation keyed off `settings.lastRunVersion`). — [update-service.ts](../src/update-service.ts), [ADR-011](./adr/011-auto-update-mechanism.md)
 
 ## Cross-Cutting Concerns
@@ -105,7 +107,9 @@ One ccusage `daily` spawn per refresh interval (default 15 min, user-configurabl
 
 ### Window Security
 
-`contextIsolation: true`, `nodeIntegration: false`, a strict CSP, `sandbox: false` (for the ESM preload), and a single read-only IPC channel; the renderer loads only local bundled code. — [window.ts](../src/window.ts), [ADR-008](./adr/008-dashboard-window-bundle.md)
+Dashboard: `contextIsolation: true`, `nodeIntegration: false`, a strict CSP, `sandbox: false` (for the ESM preload), and a single read-only IPC channel; the renderer loads only local bundled code. — [window.ts](../src/window.ts), [ADR-008](./adr/008-dashboard-window-bundle.md)
+
+About: the same `contextIsolation`/`nodeIntegration` posture but `sandbox: true` and **no preload at all** — it's a static page with no data to fetch, so `setWindowOpenHandler` + `will-navigate` are the only extra surface, both routing links to `shell.openExternal` after an http(s)-only scheme check. — [about-window.ts](../src/about-window.ts)
 
 ### Platform Behavior
 

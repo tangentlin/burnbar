@@ -27,6 +27,7 @@
 | [preload](./modules/preload.md) | contextBridge → `window.burnbar.getSeries` |
 | [window](./modules/window.md) | `DashboardWindow` — lazy BrowserWindow + security |
 | [dashboard](./modules/dashboard.md) | Chart.js renderer (esbuild bundle) |
+| [about-window](./modules/about-window.md) | `AboutWindow` — static credits/links window, no preload/IPC |
 | [menu-card-window](./modules/menu-card-window.md) | `MenuCardRenderer` — hidden window rasterizing the tray stats card |
 | [menu-card](./modules/menu-card.md) | Canvas 2D card renderer (esbuild bundle) |
 | [update-service](./modules/update-service.md) | `UpdateService` — electron-updater lifecycle feeding the tray's update row |
@@ -42,6 +43,7 @@
 |---------|-------------|
 | [menu-bar-cost](./features/menu-bar-cost.md) | Live today's-cost title in the menu bar |
 | [usage-menu](./features/usage-menu.md) | Context menu: stats card, Open Dashboard, About, Quit |
+| [about](./features/about.md) | About/credits window: ccusage, forked-from app, icon artist, GitHub + social links |
 | [usage-archive](./features/usage-archive.md) | Durable, numbers-only capture that survives source-log purges |
 | [usage-dashboard](./features/usage-dashboard.md) | Chart.js window: cost over time, by model, by agent |
 | [usage-refresh](./features/usage-refresh.md) | Configurable cadence (15 min default), manual mode, Refresh Now |

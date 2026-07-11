@@ -30,7 +30,7 @@ ccusage failed → single disabled row "Error loading usage data" (card + fallba
 - [ ] Until the card renders (or on render failure), the plain-text "Today's Usage" fallback appears, tokens thousands-separated via `toLocaleString()`. — [tray.ts:168](../../src/tray.ts#L168), [tray.ts:222](../../src/tray.ts#L222)
 - [ ] On error, the error row appears (card/fallback skipped); the rest of the menu remains. — [tray.ts:163](../../src/tray.ts#L163)
 - [ ] Quit always present and calls `app.quit()`. — [tray.ts:190](../../src/tray.ts#L190)
-- [ ] An "About Burnbar <version>" item (version from `app.getVersion()`) sits above Quit and opens the project page via `shell.openExternal`. — [tray.ts:199](../../src/tray.ts#L199), [main.ts:59-63](../../src/main.ts#L59-L63)
+- [ ] An "About Burnbar <version>" item (version from `app.getVersion()`) sits above Quit and opens the About/credits window — see [features/about.md](./about.md). — [tray.ts:298](../../src/tray.ts#L298), [main.ts](../../src/main.ts)
 - [ ] Menu rebuilt on every pushed update (no stale rows); the card bitmap is cached by a data signature and only re-rendered when its numbers change. — [tray.ts#render](../../src/tray.ts#L98), [tray.ts#refreshCard](../../src/tray.ts#L122)
 
 ## Data Model (Conceptual)
@@ -58,7 +58,7 @@ stateDiagram-v2
 | Card + icon drawing | [src/menu-card/card.ts](../../src/menu-card/card.ts) |
 | Row icons (render once, cache) | [tray.ts#loadIcons](../../src/tray.ts#L87), [menu-card-window.ts#renderIcon](../../src/menu-card-window.ts) |
 | Plain-text fallback | [tray.ts#addFallbackUsageItems](../../src/tray.ts#L217) |
-| About action | [main.ts](../../src/main.ts#L53) (`shell.openExternal`) |
+| About action | [main.ts](../../src/main.ts) (`onAbout: () => about.open()`) — see [features/about.md](./about.md) |
 | Data | [capture.ts#toUsageData](../../src/capture.ts#L124) + [capture-service.ts#computeCard](../../src/capture-service.ts#L201) pushed via [CaptureService](../../src/capture-service.ts) |
 
 ## Known Pitfalls
