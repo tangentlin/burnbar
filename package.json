@@ -48,17 +48,17 @@
     "@resvg/resvg-js": "2.6.2",
     "@storybook/html-vite": "10.5.0",
     "@types/node": "24.13.2",
-    "@vitest/coverage-v8": "3.2.6",
+    "@vitest/coverage-v8": "4.1.10",
     "chart.js": "4.5.1",
     "electron": "43.0.0",
     "electron-builder": "26.15.6",
-    "esbuild": "0.25.12",
+    "esbuild": "0.28.1",
     "oxfmt": "0.56.0",
     "oxlint": "1.72.0",
     "storybook": "10.5.0",
     "typescript": "6.0.3",
-    "vite": "7.2.7",
-    "vitest": "3.2.6"
+    "vite": "8.1.4",
+    "vitest": "4.1.10"
   },
   "packageManager": "pnpm@10.13.1",
   "pnpm": {
