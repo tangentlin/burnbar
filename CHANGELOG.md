@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.8.0] - 2026-07-11
+
+## What's Changed
+* dep: update ccusage and dev tooling versions by @tangentlin in https://github.com/tangentlin/burnbar/pull/65
+* Menu card animations: odometer roll, bar growth, embers (#52 #53 #54) by @tangentlin in https://github.com/tangentlin/burnbar/pull/64
+
+
+**Full Changelog**: https://github.com/tangentlin/burnbar/compare/v0.7.0...v0.8.0
+
 ## [v0.7.0] - 2026-07-11
 
 ## What's Changed
