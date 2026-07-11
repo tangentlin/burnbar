@@ -32,6 +32,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "icon": "node scripts/generate-icons.mjs",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
     "dist": "pnpm build && electron-builder --config electron-builder.config.cjs",
     "dist:mac": "pnpm build && electron-builder --mac --config electron-builder.config.cjs",
     "dist:mac:ci": "pnpm build && electron-builder --mac --config electron-builder.config.cjs --publish onTagOrDraft",
@@ -44,6 +46,7 @@
   },
   "devDependencies": {
     "@resvg/resvg-js": "2.6.2",
+    "@storybook/html-vite": "10.5.0",
     "@types/node": "24.13.2",
     "@vitest/coverage-v8": "3.2.6",
     "chart.js": "4.5.1",
@@ -52,7 +55,9 @@
     "esbuild": "0.25.12",
     "oxfmt": "0.56.0",
     "oxlint": "1.72.0",
+    "storybook": "10.5.0",
     "typescript": "6.0.3",
+    "vite": "7.2.7",
     "vitest": "3.2.6"
   },
   "packageManager": "pnpm@10.13.1",

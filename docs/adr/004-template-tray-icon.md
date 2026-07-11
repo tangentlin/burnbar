@@ -17,6 +17,7 @@ Load a monochrome PNG and call `icon.setTemplateImage(true)` so macOS renders it
 - (+) Correct appearance in light/dark menu bars with no runtime logic.
 - (+) Two distinct sources of truth: monochrome tray mark vs. color app icon — each optimized for its use.
 - (−) The tray asset **must** stay monochrome; a colored PNG would render as a flat silhouette.
+- (~) The update **badge** ([ADR-011 amendment](./011-auto-update-mechanism.md#amendment-attention-cues-2026-07)) is the one exception to "no runtime logic": while an update is pending, [tray-icon.ts](../../src/tray-icon.ts) composites a *non-template* variant from this template (recolored for the current appearance in code + a colored dot). The committed asset stays a template; only the transient badged image opts out of auto-tinting.
 
 ## Alternatives Considered
 

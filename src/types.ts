@@ -210,6 +210,9 @@ export type BurnbarBridge = {
 /** Persisted user preferences (`settings.json` under userData). */
 export type AppSettings = {
   refreshIntervalMinutes: number; // 0 = manual only (never auto-refresh)
+  // App version seen at the previous launch. Compared to the running version on
+  // startup to fire the one-time "you're now on vX" post-update notification.
+  lastRunVersion?: string;
 };
 
 /**

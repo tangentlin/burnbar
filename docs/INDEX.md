@@ -8,18 +8,20 @@
 | [DOMAIN.md](./DOMAIN.md) | Vocabulary, entities, invariants, business rules, edge cases |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Structure, composition, data flow, design decisions |
 | [functional-spec/PRODUCT.md](./functional-spec/PRODUCT.md) | Implementation-agnostic product spec |
+| [storybook.md](./storybook.md) | Preview the update badge / notification states in isolation (no app launch) |
 
 ## Modules
 
 | Module | Description |
 |--------|-------------|
 | [main](./modules/main.md) | Electron lifecycle; wires capture + tray + dashboard, quit flush |
-| [tray](./modules/tray.md) | `TrayManager` — display-only icon/title/menu + "Open Usage Dashboard…" |
+| [tray](./modules/tray.md) | `TrayManager` — display-only icon/title/menu + "Open Usage Dashboard…" + update badge |
+| [tray-icon](./modules/tray-icon.md) | Pure compositor for the update badge (recolor glyph + colored dot) |
 | [capture](./modules/capture.md) | ccusage spawn (DI runner) + normalizers + `toUsageData` |
 | [capture-service](./modules/capture-service.md) | `CaptureService` — one ccusage call feeding tray **and** archive |
 | [store](./modules/store.md) | `ArchiveStore` — keep-richest merge, atomic IO, manifest |
 | [derive](./modules/derive.md) | `deriveSeries` — archive → chart series (cost + tokens, pure) |
-| [settings](./modules/settings.md) | `SettingsStore` — persisted refresh interval |
+| [settings](./modules/settings.md) | `SettingsStore` — persisted refresh interval + last-run version |
 | [time](./modules/time.md) | tz helpers + relative-time / interval formatting |
 | [ipc](./modules/ipc.md) | `registerArchiveIpc` — read-only `archive:get-series` |
 | [preload](./modules/preload.md) | contextBridge → `window.burnbar.getSeries` |
@@ -28,6 +30,8 @@
 | [menu-card-window](./modules/menu-card-window.md) | `MenuCardRenderer` — hidden window rasterizing the tray stats card |
 | [menu-card](./modules/menu-card.md) | Canvas 2D card renderer (esbuild bundle) |
 | [update-service](./modules/update-service.md) | `UpdateService` — electron-updater lifecycle feeding the tray's update row |
+| [update-notifier](./modules/update-notifier.md) | `UpdateNotifier` — OS notifications on actionable update transitions (injectable presenter) |
+| update-notification-content | Pure, browser-safe notification copy shared by the notifier + Storybook — [update-notifier.md](./modules/update-notifier.md) |
 | [types](./modules/types.md) | Shared contracts: usage, ccusage raw, archive records, series |
 | [icon-pipeline](./modules/icon-pipeline.md) | SVG → PNG icon generation (`pnpm icon`) |
 | [packaging](./modules/packaging.md) | electron-builder config, signing, notarization, entitlements |
@@ -42,7 +46,7 @@
 | [usage-dashboard](./features/usage-dashboard.md) | Chart.js window: cost over time, by model, by agent |
 | [usage-refresh](./features/usage-refresh.md) | Configurable cadence (15 min default), manual mode, Refresh Now |
 | [release-distribution](./features/release-distribution.md) | Building signed/notarized macOS artifacts |
-| [auto-update](./features/auto-update.md) | Tray-only update check/download/install via electron-updater |
+| [auto-update](./features/auto-update.md) | Tray update check/download/install via electron-updater + icon badge + notifications |
 
 ## ADRs
 

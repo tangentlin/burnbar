@@ -30,7 +30,11 @@ export class SettingsStore {
   async load(): Promise<AppSettings> {
     try {
       const parsed = JSON.parse(await fs.readFile(this.filePath, "utf8")) as Partial<AppSettings>;
-      this.settings = { refreshIntervalMinutes: sanitizeMinutes(parsed.refreshIntervalMinutes) };
+      this.settings = {
+        refreshIntervalMinutes: sanitizeMinutes(parsed.refreshIntervalMinutes),
+        lastRunVersion:
+          typeof parsed.lastRunVersion === "string" ? parsed.lastRunVersion : undefined,
+      };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         console.error("Failed to read settings; using defaults:", error);
@@ -48,7 +52,21 @@ export class SettingsStore {
   }
 
   async setRefreshIntervalMinutes(minutes: number): Promise<AppSettings> {
-    this.settings = { ...this.settings, refreshIntervalMinutes: sanitizeMinutes(minutes) };
+    return this.persist({ refreshIntervalMinutes: sanitizeMinutes(minutes) });
+  }
+
+  /** The app version recorded at the previous launch (undefined on first run). */
+  getLastRunVersion(): string | undefined {
+    return this.settings.lastRunVersion;
+  }
+
+  async setLastRunVersion(version: string): Promise<AppSettings> {
+    return this.persist({ lastRunVersion: version });
+  }
+
+  /** Merge a patch into the in-memory settings and atomically persist the result. */
+  private async persist(patch: Partial<AppSettings>): Promise<AppSettings> {
+    this.settings = { ...this.settings, ...patch };
     await atomicWriteJson(this.filePath, this.settings);
     return this.settings;
   }

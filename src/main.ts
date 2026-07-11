@@ -8,6 +8,8 @@ import { SettingsStore } from "./settings.js";
 import { ArchiveStore } from "./store.js";
 import { systemTimezone } from "./time.js";
 import { TrayManager } from "./tray.js";
+import { upgradedVersion } from "./update-notification-content.js";
+import { UpdateNotifier } from "./update-notifier.js";
 import { UpdateService } from "./update-service.js";
 import { DashboardWindow } from "./window.js";
 
@@ -38,6 +40,18 @@ app.whenReady().then(async () => {
 
   logger.log("info", `app start — timezone: ${timezone}`);
 
+  // Detect an install that happened since the previous launch (the app relaunches
+  // itself onto the new version) so we can confirm it once, then record the
+  // running version for next time — only when it changed, so an unchanged launch
+  // doesn't rewrite settings.json. Best-effort: a persistence failure is logged.
+  const currentVersion = app.getVersion();
+  const previousVersion = settings.getLastRunVersion();
+  if (previousVersion !== currentVersion) {
+    settings.setLastRunVersion(currentVersion).catch((error: unknown) => {
+      logger.log("error", "Failed to persist last-run version", error);
+    });
+  }
+
   const service = new CaptureService({
     store,
     timezone,
@@ -45,6 +59,9 @@ app.whenReady().then(async () => {
     logger,
   });
   const updates = new UpdateService({ logger });
+  // Clicking the "available" notification consents to the download; "downloaded"
+  // is passive (restart stays the tray's sole quitAndInstall click) — see ADR-011.
+  const updateNotifier = new UpdateNotifier(() => void updates.downloadUpdate(), { logger });
   const dashboard = new DashboardWindow();
   const menuCard = new MenuCardRenderer();
   const tray = new TrayManager(
@@ -96,7 +113,18 @@ app.whenReady().then(async () => {
   registerArchiveIpc(store, timezone);
   tray.initialize();
   service.onState((state) => tray.render(state));
-  updates.onState((state) => tray.renderUpdate(state));
+  // Fan the update state out to both the tray (badge + menu row) and the notifier.
+  updates.onState((state) => {
+    tray.renderUpdate(state);
+    updateNotifier.handle(state);
+  });
+
+  // A changed version means the previous launch's update was just installed.
+  const upgradedTo = upgradedVersion(previousVersion, currentVersion);
+  if (upgradedTo) {
+    updateNotifier.announceInstalled(upgradedTo);
+  }
+
   await service.start();
   updates.start();
 });

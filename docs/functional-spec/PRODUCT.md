@@ -50,12 +50,12 @@
 - **MUST** still build successfully without any signing credentials (unsigned).
 
 ### Auto-Update
-- **MUST** notify the user, from the tray only (no window), when a newer signed release is available.
-- **MUST NOT** download an update without an explicit user action.
-- **MUST NOT** install/restart without an explicit user action ("Restart to Update") — never automatically, never mid-use.
+- **MUST** make the two actions that need the user — Download and Restart — discoverable without opening the menu: a colored **badge** on the menu-bar icon and an **OS notification** on each of those transitions (plus a one-time post-restart confirmation). No in-app window.
+- **MUST NOT** download an update without an explicit user action (clicking the "available" notification counts as that action; it starts only the download).
+- **MUST NOT** install/restart without an explicit user action ("Restart to Update") — never automatically, never mid-use, and never from a notification click.
 - **MUST** only install signed + notarized payloads (enforced by the OS-level updater, not hand-rolled).
 - **MUST** keep checking for updates on a fixed background cadence independent of the user-configurable usage-refresh interval.
-- **MUST** be best-effort — a failed check or download never crashes or blocks the tray.
+- **MUST** be best-effort — a failed check or download never crashes or blocks the tray, and never fires a notification (failures stay logged-and-quiet).
 
 ## Non-Functional Requirements
 
@@ -104,10 +104,11 @@ erDiagram
 
 ### Update to the latest release
 1. Burnbar checks GitHub Releases in the background every few hours (or the user clicks "Check for Updates" in the tray).
-2. When a newer signed release is found, the tray row becomes "Download Update (vX.Y.Z)..." — clicking it downloads.
-3. Once downloaded, the row becomes "Restart to Update" — clicking it installs and relaunches. Nothing installs before this click.
+2. When a newer signed release is found, the tray row becomes "Download Update (vX.Y.Z)...", the menu-bar icon gains a **blue dot**, and a notification appears — clicking either the row or the notification downloads.
+3. Once downloaded, the row becomes "Restart to Update", the icon dot turns **orange**, and a notification says it's ready — clicking the tray row installs and relaunches. Nothing installs before this click (the notification is informational).
+4. After relaunching on the new version, a one-time notification confirms "Burnbar updated".
 
-**Edge cases:** check/download fails → row falls back to "Check for Updates", failure logged only; no newer release → row stays "Check for Updates".
+**Edge cases:** check/download fails → row falls back to "Check for Updates", badge clears, failure logged only (no notification); no newer release → row stays "Check for Updates".
 
 ## Out of Scope
 

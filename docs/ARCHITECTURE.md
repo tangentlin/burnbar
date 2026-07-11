@@ -13,7 +13,9 @@
 | `MenuCardRenderer` | Hidden window rasterizing the menu stats card to a `NativeImage` | [menu-card-window.ts](../src/menu-card-window.ts) |
 | `DashboardWindow` + `registerArchiveIpc` | Chart.js window; read-only `archive:get-series` channel | [window.ts](../src/window.ts), [ipc.ts](../src/ipc.ts) |
 | `UpdateService` | electron-updater lifecycle (check/download/install) feeding the tray's update row | [update-service.ts](../src/update-service.ts) |
+| `UpdateNotifier` | OS notifications on the actionable update transitions + post-restart confirmation | [update-notifier.ts](../src/update-notifier.ts) |
 | `pnpm build:renderer` | esbuild-bundle both browser renderers — the dashboard (+ Chart.js) and the menu card | [scripts/build-renderer.mjs](../scripts/build-renderer.mjs) |
+| `pnpm storybook` | Preview browser-representable states (the update badge + notification copy) in isolation, no app launch | [.storybook/](../.storybook/), [stories/](../stories/), [storybook.md](./storybook.md) |
 | `electron-builder` config | Packaging / signing / notarization / GitHub-Releases publish (electron-updater feed) | [electron-builder.config.cjs](../electron-builder.config.cjs) |
 
 ## Composition Overview
@@ -43,6 +45,9 @@ flowchart TD
     ipc -->|DashboardSeries| renderer
     upd -->|checkForUpdates| feed[("GitHub Releases<br/>latest-mac.yml")]
     upd -->|onState UpdateState| tray
+    upd -->|onState UpdateState| notif["UpdateNotifier"]
+    tray -->|badge via tray-icon.ts| trayicon["composeBadgedIconBitmap"]
+    notif -->|Notification| os[("macOS Notification Center")]
 ```
 
 Single Electron **main** process. The tray-only design grew two browser **renderers**: the on-demand dashboard window, and a hidden, never-shown window the tray drives to rasterize its stats card. [main.ts](../src/main.ts) wires the parts; [capture-service.ts](../src/capture-service.ts) owns the one external call and is the only writer of the archive; [tray.ts](../src/tray.ts) is a pure display consumer that asks [menu-card-window.ts](../src/menu-card-window.ts) to paint its card and renders [update-service.ts](../src/update-service.ts)'s state into a single tray-only update row; the dashboard reads the archive only through the `burnbar.getSeries` preload channel. Pure logic lives in [store.ts](../src/store.ts) (merge) and [derive.ts](../src/derive.ts) (series) and is unit-tested in isolation.
@@ -80,7 +85,7 @@ The renderer asks `window.burnbar.getSeries({range, dimension})`; the preload fo
 - **The archive is the only persistent state** — per-day JSON, monthly-sharded sessions, and a manifest under `userData/archive`. Each merge is atomic and idempotent. — [store.ts](../src/store.ts), [ADR-006](./adr/006-durable-usage-archive.md)
 - `CaptureService` holds the refresh timer, the latest `UsageData`, an in-memory `dailyCache` (mirrors disk to skip unchanged days), and the day-rollover marker. — [capture-service.ts:40-47](../src/capture-service.ts#L40-L47)
 - The tray retains its `Tray` handle, the latest state, and the cached card bitmap (keyed by a signature of the card data, so the 60 s label tick reuses it); the dashboard window is created lazily and dropped on close; the menu-card window is created once and reused. — [tray.ts](../src/tray.ts), [menu-card-window.ts](../src/menu-card-window.ts), [window.ts](../src/window.ts)
-- `UpdateService` holds its own fixed-interval timer (independent of the usage-refresh interval) and the latest `UpdateState`; the tray renders it into a single state-driven menu row. — [update-service.ts](../src/update-service.ts), [ADR-011](./adr/011-auto-update-mechanism.md)
+- `UpdateService` holds its own fixed-interval timer (independent of the usage-refresh interval) and the latest `UpdateState`; `main.ts` fans that state out to the tray (a single state-driven menu row **plus** a colored icon badge on the actionable states, composited by the pure [tray-icon.ts](../src/tray-icon.ts)) and to [UpdateNotifier](../src/update-notifier.ts) (OS notifications on the actionable transitions + a post-restart confirmation keyed off `settings.lastRunVersion`). — [update-service.ts](../src/update-service.ts), [ADR-011](./adr/011-auto-update-mechanism.md)
 
 ## Cross-Cutting Concerns
 
