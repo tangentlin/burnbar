@@ -16,6 +16,9 @@ It also has plain **named exports**, used directly (no `window`) by tests and by
 | `setEmbersActive(active, nowMs)` | The function `window.__burnbarSetEmbersActive` wraps. |
 | `drawCard(data)` | A fully static, non-animated render (no rolls, no growth, no embers) — the "settled" reference look. |
 | `resetCardSession()` | Forgets animation history; used by tests/Storybook so switching examples starts clean. |
+| `nextCardSession(session, data, nowMs)` | The pure state-transition (no canvas) `renderCardFrame` delegates to — see [Invariants](#invariants--failure-modes). Directly unit-tested (`test/menu-card-session.test.ts`) without a browser. |
+
+The `window.__burnbar*` assignments are guarded (`if (typeof window !== "undefined")`) so the module — and its pure exports like `nextCardSession` — stays importable from plain Node (Vitest) despite living in a browser-only bundle entry point.
 
 Internal helpers: `paintCard` (the shared low-level canvas paint, given already-resolved animation state), `drawStat`/`drawRollingValue` (label + odometer-capable value), `drawBars` (the warm bar chart, with an optional grow-from-baseline tween), `drawEmbers`, `money`/`tokens` formatters, and the icon helpers `iconContext`/`drawRefreshIcon`/`drawDashboardIcon`/`drawIcon`.
 
@@ -36,7 +39,7 @@ Internal helpers: `paintCard` (the shared low-level canvas paint, given already-
 - **No frame-timing/lifecycle decisions** — *when* to ask for another frame, the bounded-run safety cap, and the menu-open ember lifecycle all live in the main process's [`card-animator.ts`](../../src/card-animator.ts) / [tray.ts](./tray.md). This module only answers "what does the card look like at instant `nowMs`."
 - **No data access** — it draws exactly the `MenuCardData` it's handed; derivation is the [capture-service](./capture-service.md)'s job and assembly is the [tray](./tray.md)'s.
 - No theme **detection**: the card adapts its value-text color from the `dark` flag the tray passes in (`MenuCardData.dark`), it doesn't query the OS itself; the **icons** are alpha-only so macOS owns their tint. See [adr/009](../adr/009-menu-stats-card.md).
-- Not unit-tested as a renderer (a DOM/canvas module, verified via the production `MenuCardRenderer` and via [Storybook](../storybook.md)) — but the animation *math* it depends on ([animation.ts](../../src/menu-card/animation.ts)) is pure and **is** unit-tested (`test/menu-card-animation.test.ts`).
+- Not unit-tested as a *renderer* (the DOM/canvas paint path, verified via the production `MenuCardRenderer` and via [Storybook](../storybook.md)) — but everything that doesn't touch `document`/canvas **is**: the animation math it depends on ([animation.ts](../../src/menu-card/animation.ts), `test/menu-card-animation.test.ts`) and its own session state-transition logic (`nextCardSession`, `test/menu-card-session.test.ts`).
 
 ## How It Works
 
@@ -68,6 +71,7 @@ flowchart LR
 - **Global contract**: the page must define `window.__burnbarRenderCardFrame`, `window.__burnbarSetEmbersActive`, and `window.__burnbarDrawIcon`; the hidden window calls them by name. Renaming one breaks that render (the renderer then returns `null`/no-ops). — [card.ts](../../src/menu-card/card.ts), [menu-card-window](./menu-card-window.md)
 - **Retina contract**: draws at `SCALE`× and the consumer tags the image `scaleFactor: SCALE`; the two constants must agree. — [card.ts](../../src/menu-card/card.ts)
 - **Session is module-scoped, not per-call**: `renderCardFrame`/`setEmbersActive` remember the last paint via a module-level `session` variable — correct because production has exactly one hidden window instance, but it means only **one** live animated preview can run at a time (relevant to [Storybook](../storybook.md), which calls `resetCardSession()` per story). — [ADR-013](../adr/013-menu-card-animation-framework.md)
+- **The odometer's "roll from" value is a dedicated snapshot, not `session.data`**: `CardAnimator` polls with the *same* `data` object across every frame of a run, so `session.data` becomes equal to the roll's *target* values from the second frame onward. `nextCardSession` snapshots the pre-change values into `rollFromData` only at the instant a roll starts and leaves it untouched until the next real change — using `session.data` directly here was a real bug (caught in review) that cut every roll short after one frame.
 - **Animation triggers are precise, not "any change"**: the odometer roll keys off the four numeric stat fields only; the bar reveal keys off the `spark` array only; **`dark` is deliberately excluded from both** so a light/dark menu switch recolors without replaying any animation. — [statsEqual/sparkEqual](../../src/menu-card/card.ts)
 - **Transparent card + adaptive text**: the card has no background fill, so the bold value color follows `MenuCardData.dark` (light text on dark menus, dark text on light) to stay legible on the menu surface; labels, bars, and template-tinted icons read on both. See [adr/009](../adr/009-menu-stats-card.md). The **icons** are alpha-only on purpose (template tinting).
 - **Graceful empties**: an all-zero spark draws just the baseline (no bars, no growth tween); a `null` top model omits that line; `null` today figures render `—` (never rolls, since `—` isn't a digit). — [drawBars](../../src/menu-card/card.ts), [paintCard](../../src/menu-card/card.ts)

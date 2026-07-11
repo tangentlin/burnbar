@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Drives the menu card's frame-at-a-time rendering API ([menu-card-window](./menu-card-window.md)) on a timer, so the [tray](./tray.md) doesn't have to hand-roll polling loops for each of the card's animations ([ADR-013](../adr/013-menu-card-animation-framework.md)). Decoupled from *how* a frame is produced (both the render call and the ember toggle are injected functions) and from real wall-clock time (the clock and scheduler are injectable too), so the tricky part — supersession, the safety-cap deadline, the menu-open/close race — is unit-testable without a real hidden `BrowserWindow` or real timers.
+Drives the menu card's frame-at-a-time rendering API ([menu-card-window](./menu-card-window.md)) on a timer, so the [tray](./tray.md) doesn't have to hand-roll polling loops for each of the card's animations ([ADR-013](../adr/013-menu-card-animation-framework.md)). Decoupled from *how* a frame is produced (both the render call and the ember toggle are injected functions), so the tricky part — supersession, the safety-cap deadline, the menu-open/close race — is unit-testable with Vitest's fake timers rather than a real hidden `BrowserWindow`.
 
 ## Public Surface
 
@@ -10,8 +10,9 @@ Drives the menu card's frame-at-a-time rendering API ([menu-card-window](./menu-
 |--------|------|------|
 | `CardAnimator` | class (`onData`, `setMenuOpen`, `dispose`) | [card-animator.ts](../../src/card-animator.ts) |
 | `RenderCardFrame`, `SetEmbersActive`, `CardAnimatorOptions` | the injected-dependency shapes | [card-animator.ts](../../src/card-animator.ts) |
+| `FRAME_INTERVAL_MS`, `MAX_BOUNDED_RUN_MS` | the poll cadence (~24fps) and the bounded-run safety cap, exported so tests (and the Storybook stories) can reference the real values instead of duplicating magic numbers | [card-animator.ts](../../src/card-animator.ts) |
 
-`new CardAnimator(renderFrame, setEmbersActive, options)` — `renderFrame`/`setEmbersActive` are typically `MenuCardRenderer.renderFrame`/`.setEmbersActive` bound closures; `options.onFrame` is called with every rendered frame (including `null` on failure); `options.now`/`scheduleFrame`/`cancelFrame` default to `Date.now`/`setTimeout`/`clearTimeout` and exist to be overridden in tests. `onData(data)` — new card figures arrived (the tray already checked its signature changed). `setMenuOpen(open)` — the tray context menu opened or closed. `dispose()` — cancels any pending timer.
+`new CardAnimator(renderFrame, setEmbersActive, options)` — `renderFrame`/`setEmbersActive` are typically `MenuCardRenderer.renderFrame`/`.setEmbersActive` bound closures; `options.onFrame` is called with every rendered frame (including `null` on failure); `options.now` defaults to `Date.now` and exists to be overridden in tests (real `setTimeout`/`clearTimeout` are always used — drive them deterministically with `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync(FRAME_INTERVAL_MS)`, the same convention `update-service.test.ts`/`capture-service.test.ts` already use). `onData(data)` — new card figures arrived (the tray already checked its signature changed). `setMenuOpen(open)` — the tray context menu opened or closed. `dispose()` — cancels any pending timer.
 
 ## Responsibilities
 
@@ -44,7 +45,7 @@ flowchart LR
     pump --> render["renderFrame(data, now)"]
     render --> onFrame["onFrame(image)"]
     onFrame --> decide{"menuOpen ||\n(animating && !pastDeadline)?"}
-    decide -->|yes| schedule["scheduleFrame(pump, ~42ms)"]
+    decide -->|yes| schedule["setTimeout(pump, ~42ms)"]
     decide -->|no| stop["stop: looping=false"]
     schedule --> pump
 ```
@@ -68,7 +69,7 @@ flowchart LR
 
 - New animation triggers (a fourth "reason to keep polling") slot into `shouldContinue` in `pump` alongside `menuOpen`/`animating`.
 - The frame-rate cadence (`FRAME_INTERVAL_MS`) and the runaway-safety cap (`MAX_BOUNDED_RUN_MS`) are top-of-file constants.
-- Swap the clock/scheduler (`now`/`scheduleFrame`/`cancelFrame`) via `CardAnimatorOptions` for tests, or to move off `setTimeout` (e.g. an RAF-driven variant) without touching the loop logic.
+- Swap the clock (`now`) via `CardAnimatorOptions` for a fixed reference timestamp in tests; combine with Vitest's fake timers (see [test/card-animator.test.ts](../../test/card-animator.test.ts)) to drive the loop deterministically.
 
 ## Related Files
 
@@ -76,4 +77,4 @@ flowchart LR
 - [tray.ts](../../src/tray.ts) → [tray.md](./tray.md) — the sole consumer: constructs one `CardAnimator`, feeds it `onData`/`setMenuOpen`, and reacts to `onFrame`.
 - [src/menu-card/animation.ts](../../src/menu-card/animation.ts), [src/menu-card/card.ts](../../src/menu-card/card.ts) → [menu-card.md](./menu-card.md) — what actually gets animated.
 - [adr/013-menu-card-animation-framework.md](../adr/013-menu-card-animation-framework.md) — why this shape.
-- [test/card-animator.test.ts](../../test/card-animator.test.ts) — the loop-lifecycle unit tests (injected fake clock/scheduler).
+- [test/card-animator.test.ts](../../test/card-animator.test.ts) — the loop-lifecycle unit tests, driven by `vi.useFakeTimers()`.

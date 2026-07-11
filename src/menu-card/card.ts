@@ -412,12 +412,54 @@ function sparkEqual(a: number[], b: number[]): boolean {
   return a.length === b.length && a.every((value, i) => value === b[i]);
 }
 
-type CardSession = {
+export type CardSession = {
   data: MenuCardData;
+  // The stat values to roll *from* — snapshotted only at the instant a roll
+  // starts, then left untouched for the rest of that roll's duration. `data`
+  // itself is NOT reusable for this: `CardAnimator` polls with the same
+  // `data` reference across many frames of a run, so `data` becomes equal to
+  // the *target* values from the second frame onward — using it as the "from"
+  // snapshot would make `drawRollingValue`'s `fromText === toText` fast path
+  // fire after a single frame, cutting the roll short.
+  rollFromData: MenuCardData | null;
   odometerStartMs: number | null;
   barsStartMs: number | null;
   emberField: EmberField | null;
 };
+
+/**
+ * Pure state transition: given the previous session (or `null` on first
+ * paint) and the latest `data`/`nowMs`, decides whether an odometer roll
+ * and/or a bar-growth reveal should (re)start. No DOM/canvas — kept separate
+ * from `renderCardFrame` specifically so this decision is unit-testable
+ * (`test/menu-card-animation.test.ts`) without a browser environment.
+ */
+export function nextCardSession(
+  session: CardSession | null,
+  data: MenuCardData,
+  nowMs: number,
+): CardSession {
+  const prev = session?.data ?? null;
+  let odometerStartMs = session?.odometerStartMs ?? null;
+  let barsStartMs = session?.barsStartMs ?? null;
+  let rollFromData = session?.rollFromData ?? null;
+
+  if (prev && !statsEqual(prev, data)) {
+    odometerStartMs = nowMs;
+    rollFromData = prev; // snapshot the pre-change values; held fixed for the roll's duration
+  }
+  if (!prev || !sparkEqual(prev.spark, data.spark)) {
+    barsStartMs = nowMs;
+  }
+
+  return {
+    data,
+    rollFromData,
+    odometerStartMs,
+    barsStartMs,
+    emberField: session?.emberField ?? null,
+  };
+}
 
 let session: CardSession | null = null;
 
@@ -435,26 +477,23 @@ export function resetCardSession(): void {
  * `setEmbersActive` last turned them on.
  */
 export function renderCardFrame(data: MenuCardData, nowMs: number): CardFrame {
-  const prev = session?.data ?? null;
-  let odometerStartMs = session?.odometerStartMs ?? null;
-  let barsStartMs = session?.barsStartMs ?? null;
+  session = nextCardSession(session, data, nowMs);
+  const emberInstances = session.emberField
+    ? emberInstancesAt(session.emberField, EMBERS, nowMs)
+    : null;
 
-  if (prev && !statsEqual(prev, data)) {
-    odometerStartMs = nowMs;
-  }
-  if (!prev || !sparkEqual(prev.spark, data.spark)) {
-    barsStartMs = nowMs;
-  }
-
-  const emberField = session?.emberField ?? null;
-  const emberInstances = emberField ? emberInstancesAt(emberField, EMBERS, nowMs) : null;
-
-  const frame = paintCard(data, prev, odometerStartMs, barsStartMs, nowMs, emberInstances);
-  session = { data, odometerStartMs, barsStartMs, emberField };
+  const frame = paintCard(
+    data,
+    session.rollFromData,
+    session.odometerStartMs,
+    session.barsStartMs,
+    nowMs,
+    emberInstances,
+  );
   return frame;
 }
 
-/** Start/stop the ember loop (menu open/close). A fresh seed each activation keeps the pattern legible, not accumulating drift from a long-lived clock. */
+/** Start/stop the ember loop (menu open/close). The pattern's *shape* (particle positions/sizes) stays fixed across activations via `EMBER_SEED` — only its start time is fresh — so it reads as a stable motif, not a reshuffled scatter each time the menu opens. */
 export function setEmbersActive(active: boolean, nowMs: number): void {
   if (!session) {
     return; // nothing rendered yet to animate embers over
@@ -467,8 +506,13 @@ export function drawCard(data: MenuCardData): string {
   return paintCard(data, null, null, null, 0, null).png;
 }
 
-window.__burnbarRenderCardFrame = renderCardFrame;
-window.__burnbarSetEmbersActive = setEmbersActive;
+// Guarded so this module stays importable from plain Node (Vitest, no DOM)
+// for the pure exports (e.g. `nextCardSession`) — in the browser, `window`
+// is always defined and this always runs.
+if (typeof window !== "undefined") {
+  window.__burnbarRenderCardFrame = renderCardFrame;
+  window.__burnbarSetEmbersActive = setEmbersActive;
+}
 
 // --- Menu-row icons -------------------------------------------------------
 // Drawn solid-black on transparent; the main process flags them template
@@ -545,4 +589,6 @@ function drawIcon(name: "refresh" | "dashboard"): string {
   return (ctx.canvas as HTMLCanvasElement).toDataURL("image/png");
 }
 
-window.__burnbarDrawIcon = drawIcon;
+if (typeof window !== "undefined") {
+  window.__burnbarDrawIcon = drawIcon;
+}
