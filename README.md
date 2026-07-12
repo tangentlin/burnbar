@@ -3,7 +3,7 @@
 **Know what your AI coding agents are costing you, before the bill surprises you.** Burnbar lives in the macOS menu bar and shows today's spend at a glance, with all-time totals one click away — across Claude Code, Codex, and any other agent CLI [ccusage](https://github.com/ryoppippi/ccusage) reads, so you stop tab-switching between provider consoles to piece together what you actually spent.
 
 <!-- LATEST_DMG_LINK -->
-[**⬇️ Download for Mac (Apple Silicon) — v0.8.0**](https://github.com/tangentlin/burnbar/releases/download/v0.8.0/Burnbar-0.8.0-arm64.dmg) · [All releases](https://github.com/tangentlin/burnbar/releases/latest)
+[**⬇️ Download for Mac (Apple Silicon) — v0.8.1**](https://github.com/tangentlin/burnbar/releases/download/v0.8.1/Burnbar-0.8.1-arm64.dmg) · [All releases](https://github.com/tangentlin/burnbar/releases/latest)
 
 ![Burnbar's menu bar stats card and usage dashboard](assets/burnbar-screenshot.png)
 
