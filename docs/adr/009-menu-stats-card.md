@@ -38,3 +38,7 @@ Native macOS menus can't express this: `Menu.buildFromTemplate` labels are fixed
 | `webContents.capturePage()` on the hidden window | Depends on the compositor painting an invisible window — flaky/blank in practice; `toDataURL` off a canvas is deterministic. |
 | Hand-rolled bitmap font in the existing PNG encoder | No deps and pure, but blocky/dated glyphs and a large glyph table — it undermines the "reads bigger & polished" goal. |
 | Keep the template-image sparkline, just enlarge it | Template images are monochrome alpha masks — no color, and still no real text; can't reach the CodexBar look. |
+
+## Amendment: appearance source corrected (2026-07)
+
+`MenuCardData.dark` (the theme-adaptive value-text switch, decision bullet above) was originally read straight from `nativeTheme.shouldUseDarkColors`, which is documented as unreliable for the tray/menu-bar specifically and produced illegible text on a real dark menu bar. It now reads from `TrayManager`'s corrected `appearance` field, resolved via [appearance.ts#detectAppearance](../../src/appearance.ts). Same trigger points (cold start, an update-state transition, `nativeTheme` "updated") and the same "appearance is part of the card's data signature" behavior — only the source of truth changed. Full root cause and fix: [ADR-011's reliable-detection amendment](./011-auto-update-mechanism.md#amendment-reliable-menu-bar-appearance-detection-2026-07).

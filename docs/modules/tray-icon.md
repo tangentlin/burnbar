@@ -36,6 +36,7 @@ The **pure** compositor for the menu-bar icon's update badge: given the template
 ## Related Files
 
 - [tray.ts](../../src/tray.ts) → [tray.md](./tray.md) — the sole main-process caller; owns the `NativeImage` bridging and the appearance/variant cache.
+- [appearance.ts](../../src/appearance.ts) → [appearance.md](./appearance.md) — resolves the `IconAppearance` value `tray.ts` passes in; this module has no opinion on *how* appearance is detected, only on compositing for a given value.
 - [stories/badge.stories.ts](../../stories/badge.stories.ts) → [storybook.md](../storybook.md) — runs this same function in the browser to preview every badge state.
 - [types.ts](../../src/types.ts) — `UpdateStatus`.
 - Decisions: [adr/011](../adr/011-auto-update-mechanism.md) (why a badge), [adr/004](../adr/004-template-tray-icon.md) (why the default icon is a template).
