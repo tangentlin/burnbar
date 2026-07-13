@@ -49,6 +49,7 @@ flowchart TD
     upd -->|onState UpdateState| tray
     upd -->|onState UpdateState| notif["UpdateNotifier"]
     tray -->|badge via tray-icon.ts| trayicon["composeBadgedIconBitmap"]
+    tray -->|"defaults read (not nativeTheme)"| appear["appearance.ts<br/>detectAppearance"]
     notif -->|Notification| os[("macOS Notification Center")]
 ```
 

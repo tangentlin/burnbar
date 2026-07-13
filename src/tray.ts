@@ -10,6 +10,7 @@ import {
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { detectAppearance } from "./appearance.js";
 import type { MenuCardRenderer } from "./menu-card-window.js";
 import { REFRESH_PRESETS_MINUTES } from "./settings.js";
 import { formatIntervalLabel, formatRelativeTime } from "./time.js";
@@ -79,12 +80,18 @@ export class TrayManager {
   private dashboardIcon: NativeImage | null = null;
   // Transparent gutter filler so text on icon-less rows aligns with icon'd rows.
   private readonly spacerIcon = transparentIcon();
+  // The menu bar's actual light/dark appearance — NOT nativeTheme.shouldUseDarkColors,
+  // which only tracks the app's own UI theme and is documented as unreliable for
+  // the tray itself (electron/electron#25478, #21899), especially for a
+  // windowless, Dock-hidden app like Burnbar. Seeded with a best-effort guess and
+  // corrected asynchronously by refreshAppearance() (see initialize/renderUpdate/
+  // handleThemeChange) before either the card or the badge next paints.
+  private appearance: IconAppearance = nativeTheme.shouldUseDarkColors ? "dark" : "light";
   // Re-render the (transparent) card when the menu switches light/dark — its data
   // signature now carries the appearance, so this just re-runs the cached render.
   // The badged icon is appearance-specific too, so refresh it on the same switch.
   private readonly handleThemeChange = (): void => {
-    this.refreshCard(this.state);
-    this.refreshTrayIcon();
+    void this.refreshAppearance();
   };
 
   constructor(
@@ -133,6 +140,24 @@ export class TrayManager {
     this.labelTimer = setInterval(() => this.rebuildMenu(), LABEL_REFRESH_MS);
     nativeTheme.on("updated", this.handleThemeChange);
     void this.loadIcons();
+    // Correct the startup guess: nativeTheme.shouldUseDarkColors can be stale or
+    // wrong for a windowless, Dock-hidden app at cold start (see `appearance`).
+    void this.refreshAppearance();
+  }
+
+  /**
+   * Re-detect the menu bar's real appearance (see `appearance`'s doc comment)
+   * and repaint anything that depends on it — the card's value-text color and
+   * the update badge's glyph recolor. Cheap and infrequent: only called on
+   * cold start, an update-state transition, and a `nativeTheme` "updated" event
+   * — never per animation frame.
+   */
+  private async refreshAppearance(): Promise<void> {
+    this.appearance = await detectAppearance({
+      fallback: () => (nativeTheme.shouldUseDarkColors ? "dark" : "light"),
+    });
+    this.refreshCard(this.state);
+    this.refreshTrayIcon();
   }
 
   /** Render the static menu-row icons once and cache them (best-effort). */
@@ -163,7 +188,7 @@ export class TrayManager {
   renderUpdate(state: UpdateState): void {
     this.updateState = state;
     this.rebuildMenu();
-    this.refreshTrayIcon();
+    void this.refreshAppearance();
   }
 
   /**
@@ -182,7 +207,7 @@ export class TrayManager {
       this.tray.setImage(this.templateIcon);
       return;
     }
-    const appearance: IconAppearance = nativeTheme.shouldUseDarkColors ? "dark" : "light";
+    const appearance = this.appearance;
     const key = `${badge}:${appearance}`;
     let image = this.badgedIcons.get(key);
     if (!image) {
@@ -230,7 +255,7 @@ export class TrayManager {
 
   /** Re-render the card only when its underlying numbers changed, then rebuild the menu with the new image. */
   private refreshCard(state: TrayState): void {
-    const data = toCardData(state);
+    const data = toCardData(state, this.appearance);
     const signature = JSON.stringify(data);
     if (signature === this.cardSignature && this.cardImage) {
       return;
@@ -395,12 +420,12 @@ function transparentIcon(): NativeImage {
 }
 
 /** Combine the derived card figures with today's numbers into the renderer's input. */
-function toCardData(state: TrayState): MenuCardData {
+function toCardData(state: TrayState, appearance: IconAppearance): MenuCardData {
   return {
     ...state.card,
     todayCost: state.usage.daily?.cost ?? null,
     todayTokens: state.usage.daily?.totalTokens ?? null,
     // The card is transparent, so its value text must match the menu appearance.
-    dark: nativeTheme.shouldUseDarkColors,
+    dark: appearance === "dark",
   };
 }

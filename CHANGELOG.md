@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.8.1] - 2026-07-12
+
+## What's Changed
+* Fix badge glyph color by detecting real menu-bar appearance by @tangentlin in https://github.com/tangentlin/burnbar/pull/66
+* chore(deps-dev): bump typescript from 6.0.3 to 7.0.2 by @dependabot[bot] in https://github.com/tangentlin/burnbar/pull/67
+
+
+**Full Changelog**: https://github.com/tangentlin/burnbar/compare/v0.8.0...v0.8.1
+
 ## [v0.8.0] - 2026-07-11
 
 ## What's Changed
