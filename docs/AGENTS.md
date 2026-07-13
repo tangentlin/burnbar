@@ -21,7 +21,7 @@
 | Change a dashboard chart / view | [features/usage-dashboard.md](./features/usage-dashboard.md) → [src/derive.ts](../src/derive.ts) + [src/dashboard/](../src/dashboard/) |
 | Change the menu-bar title | [features/menu-bar-cost.md](./features/menu-bar-cost.md) → [src/tray.ts](../src/tray.ts) |
 | Change the context menu rows / stats card / Refresh Now | [features/usage-menu.md](./features/usage-menu.md) → [src/tray.ts](../src/tray.ts), [src/menu-card-window.ts](../src/menu-card-window.ts), [src/menu-card/](../src/menu-card/) |
-| Change the stats card's animation (embers; odometer roll/bar growth were removed) | [modules/menu-card.md](./modules/menu-card.md), [modules/card-animator.md](./modules/card-animator.md) → [src/menu-card/animation.ts](../src/menu-card/animation.ts), [src/menu-card/animation-config.ts](../src/menu-card/animation-config.ts), [src/card-animator.ts](../src/card-animator.ts) + [adr/013](./adr/013-menu-card-animation-framework.md) |
+| Considering a card animation | Read [adr/013](./adr/013-menu-card-animation-framework.md) and its amendments **first** — three were tried (odometer roll, bar growth, embers) and all removed; a `MenuItem` icon inside a native `Menu` never repaints while the dropdown is already open. Target the always-visible tray icon (`Tray.setImage()`) instead. |
 | Change refresh cadence / manual mode / persistence | [features/usage-refresh.md](./features/usage-refresh.md) → [src/settings.ts](../src/settings.ts) + [src/capture-service.ts](../src/capture-service.ts) |
 | Add/modify shared types | [modules/types.md](./modules/types.md) → [src/types.ts](../src/types.ts) |
 | App lifecycle / wiring / quit flush | [modules/main.md](./modules/main.md) → [src/main.ts](../src/main.ts) |
@@ -30,7 +30,7 @@
 | Package / sign / notarize / publish | [modules/packaging.md](./modules/packaging.md), [features/release-distribution.md](./features/release-distribution.md) |
 | Change update check/download/install behavior | [features/auto-update.md](./features/auto-update.md) → [src/update-service.ts](../src/update-service.ts) + [adr/011](./adr/011-auto-update-mechanism.md) |
 | Change the update attention cues (icon badge / notifications) | [features/auto-update.md](./features/auto-update.md) → [src/tray-icon.ts](../src/tray-icon.ts) (badge) + [src/update-notifier.ts](../src/update-notifier.ts) (notifications) + [adr/011 amendment](./adr/011-auto-update-mechanism.md#amendment-attention-cues-2026-07) |
-| Preview the badge / notification / menu-card-animation states without launching the app | [storybook.md](./storybook.md) → [stories/](../stories/) + `pnpm storybook` |
+| Preview the badge / notification / menu-card states without launching the app | [storybook.md](./storybook.md) → [stories/](../stories/) + `pnpm storybook` |
 | Know WHY a non-obvious choice was made | [adr/](./adr/) |
 
 ## Fresh Repo Tree
@@ -75,7 +75,7 @@ This is unrelated to the `ELECTRON_RUN_AS_NODE` that [src/capture.ts](../src/cap
 |-----------|---------|-------------|
 | `src/` | Main-process TypeScript (ESM) | Local imports use explicit `.js` extensions (Node16). No barrel files. |
 | `src/dashboard/` | Browser-context renderer (Chart.js dashboard) | Bundled by **esbuild** (not `tsc`); type-checked via `tsconfig.dashboard.json`. |
-| `src/menu-card/` | Browser-context renderer (Canvas 2D stats card + its animation engine) | Bundled by **esbuild** (not `tsc`); type-checked via `tsconfig.dashboard.json`. `animation.ts` is DOM-free and pure (also imported directly by Vitest tests). Painted by the hidden [menu-card-window.ts](../src/menu-card-window.ts), scheduled by [card-animator.ts](../src/card-animator.ts). |
+| `src/menu-card/` | Browser-context renderer (Canvas 2D stats card, no animation) | Bundled by **esbuild** (not `tsc`); type-checked via `tsconfig.dashboard.json`. Painted by the hidden [menu-card-window.ts](../src/menu-card-window.ts). |
 | `src/preload.mts` | ESM preload | `.mts` → `dist/preload.mjs` (Electron 42 ESM-preload requirement). |
 | `test/` | Vitest unit tests + JSON fixtures | Pure logic only (merge/normalize/derive/atomic IO); ccusage mocked via the injected runner. |
 | `scripts/` | Build-time Node scripts (`.mjs`) | ESM; resolve paths via `import.meta.url`. |
@@ -110,12 +110,8 @@ This is unrelated to the `ELECTRON_RUN_AS_NODE` that [src/capture.ts](../src/cap
 2. If it needs a new figure, extend the `CcusageRow` subset + `toUsageData` in [capture.ts](../src/capture.ts) and the types in [types.ts](../src/types.ts) (`MenuCard`/`MenuCardData` for card figures).
 3. `pnpm check && pnpm typecheck` (and `pnpm build:renderer` if you touched the card renderer). Update [features/usage-menu.md](./features/usage-menu.md) + [modules/tray.md](./modules/tray.md).
 
-### Change or add a menu-card animation
-1. Tune an existing one (duration/stagger/easing/particle count) in [animation-config.ts](../src/menu-card/animation-config.ts) — no drawing-code changes needed.
-2. Add a new animated element: extend the DOM-free primitives in [animation.ts](../src/menu-card/animation.ts) if needed (a new `Tween` usage or particle-field shape), thread its start/state through `session` in `renderCardFrame` (`card.ts`), and paint it in `paintCard`. [card-animator.ts](../src/card-animator.ts) already polls generically while `animating` is true — a new *bounded* animation needs no driver changes; a new *ambient* (menu-open-lifetime) one should ride `setMenuOpen` like embers do.
-3. Preview it live without Electron: `pnpm storybook` → the `Menu Card` stories ([storybook.md](./storybook.md)) drive the real functions with a browser `requestAnimationFrame` loop.
-4. Add/extend a Vitest case in [test/menu-card-animation.test.ts](../test/menu-card-animation.test.ts) (pure math) and/or [test/card-animator.test.ts](../test/card-animator.test.ts) (loop lifecycle) for anything with new timing logic.
-5. `pnpm check && pnpm typecheck && pnpm test && pnpm build:renderer && pnpm build-storybook`. Update [modules/menu-card.md](./modules/menu-card.md) / [modules/card-animator.md](./modules/card-animator.md) / [storybook.md](./storybook.md); add/amend an ADR if the framework shape itself changes (see [adr/013](./adr/013-menu-card-animation-framework.md)).
+### Before adding a menu-card animation
+The card has no animation today — an odometer digit-roll, a bar-growth reveal, and drifting ember particles were all built and then fully reverted (`CardAnimator`, `src/menu-card/animation.ts`, `src/menu-card/animation-config.ts` were deleted). Read [adr/013](./adr/013-menu-card-animation-framework.md) and its amendments **before** building another one: Electron only repaints a `MenuItem`'s icon right before a menu opens or once it closes, never while the native tray dropdown is already open and idle, so any effect that needs multiple frames visible during an open menu is a structural dead end, not a bug to engineer around. If the effect fits the always-visible tray icon instead (`Tray.setImage()`, e.g. issue #51's proposed flame), that surface *does* repaint on demand (proven by the existing update badge in [tray-icon.ts](../src/tray-icon.ts)) — a plain interval timer is sufficient, no animation framework needed.
 
 ### Change the archive shape or merge rule
 1. Edit the pure merge in [store.ts](../src/store.ts) and the records in [types.ts](../src/types.ts).

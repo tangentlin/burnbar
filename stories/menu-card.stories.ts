@@ -1,18 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/html-vite";
-// Extension-less so Vite resolves the .ts — the real production functions, not
-// a re-implementation (see badge.stories.ts for the same convention). Because
-// `card.ts` keeps its animation session as module-scoped state (by design —
-// there's exactly one hidden BrowserWindow instance in production, see
-// ADR-009/ADR-013), only one of these stories can drive a *live* animation at
-// a time; each `render()` calls `resetCardSession()` so switching stories
-// always starts clean.
-import { FRAME_INTERVAL_MS } from "../src/card-animator";
-import {
-  drawCard,
-  renderCardFrame,
-  resetCardSession,
-  setEmbersActive,
-} from "../src/menu-card/card";
+// Extension-less so Vite resolves the .ts — the real production function, not
+// a re-implementation (see badge.stories.ts for the same convention).
+import { drawCard } from "../src/menu-card/card";
 import type { MenuCardData } from "../src/types";
 
 const meta: Meta = {
@@ -21,15 +10,13 @@ const meta: Meta = {
     docs: {
       description: {
         component:
-          "The tray's stats card, driven by the real animation engine " +
-          "(`src/menu-card/animation.ts` + `src/menu-card/card.ts`) — these stories call the exact " +
-          "`renderCardFrame`/`setEmbersActive`/`drawCard` functions Electron's hidden renderer window calls, " +
-          "not a re-implementation. The ember loop here runs at the same ~24fps cadence as the real " +
-          "main-process poller (`card-animator.ts`'s own `FRAME_INTERVAL_MS`). Issues #52 (odometer digit-roll) " +
-          "and #54 (bar-growth reveal) were removed after ADR-013's open verification item resolved: Electron " +
-          "only repaints a `MenuItem.icon` at `menuNeedsUpdate:`/`menuDidClose:`, never while the native menu " +
-          "sits open and idle, so neither could ever be seen. Embers (#53) survive here for reference/future " +
-          "reuse even though the same limitation applies to them in production — see ADR-013.",
+          "The tray's stats card, driven by the real `drawCard` function from `src/menu-card/card.ts` — the " +
+          "same one-shot render Electron's hidden renderer window calls, not a re-implementation. The card has " +
+          "no animation: an odometer-style digit roll, a bar-chart grow-from-baseline reveal, and drifting " +
+          "ember particles (issues #52/#53/#54) were all tried and removed — Electron only repaints a " +
+          "MenuItem's icon right before a menu opens or once it closes, never while the native tray dropdown " +
+          "is already open and idle, so none of the three could ever actually be seen. See ADR-013 and its " +
+          "amendments.",
       },
     },
   },
@@ -75,14 +62,6 @@ function button(label: string, onClick: () => void): HTMLButtonElement {
   return btn;
 }
 
-function note(text: string): HTMLElement {
-  const el = document.createElement("p");
-  el.textContent = text;
-  el.style.cssText =
-    "max-width:320px;margin-top:10px;font:11px -apple-system,system-ui,sans-serif;color:#999";
-  return el;
-}
-
 function jitter(value: number, pct: number): number {
   return Math.max(0, value * (1 + (Math.random() * 2 - 1) * pct));
 }
@@ -102,121 +81,34 @@ function freshSpark(): number[] {
   return Array.from({ length: 30 }, () => Math.round(Math.random() * 800) / 100);
 }
 
-/**
- * Drives a RAF loop against the real `renderCardFrame`, throttled to the same
- * cadence the main-process poller uses (so the "watch for flicker" spike is
- * actually representative, not just running at the browser's native 60Hz+),
- * and skips the `<img src>` write when a frame is byte-identical to the last
- * one painted. Self-stops once the `<img>` leaves the DOM.
- */
-function driveLive(img: HTMLImageElement, getData: () => MenuCardData): void {
-  let lastPaintMs = 0;
-  let lastPng = "";
-  const tick = (nowMs: number): void => {
-    if (!img.isConnected) {
-      return;
-    }
-    if (nowMs - lastPaintMs >= FRAME_INTERVAL_MS) {
-      lastPaintMs = nowMs;
-      const frame = renderCardFrame(getData(), nowMs);
-      if (frame.png && frame.png !== lastPng) {
-        lastPng = frame.png;
-        img.src = frame.png;
-      }
-    }
-    requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
-}
-
-/** The "mount a live-driven card" preamble every animated story shares: reset the session, build the panel + image, and start driving it. */
-function mountLiveCard(): {
-  wrap: HTMLElement;
-  img: HTMLImageElement;
-  setData: (data: MenuCardData) => void;
-  getData: () => MenuCardData;
-} {
-  resetCardSession();
-  const wrap = panel();
-  const img = cardImage();
-  wrap.appendChild(img);
-  let data = BASE_DATA;
-  driveLive(img, () => data);
-  return {
-    wrap,
-    img,
-    setData: (next) => {
-      data = next;
-    },
-    getData: () => data,
-  };
-}
-
-/** A button that toggles `setEmbersActive` (simulating menu open/close) and relabels itself. */
-function emberToggleButton(openLabel: string, closeLabel: string): HTMLButtonElement {
-  let open = false;
-  const toggle = button(openLabel, () => {
-    open = !open;
-    setEmbersActive(open, performance.now());
-    toggle.textContent = open ? closeLabel : openLabel;
-  });
-  return toggle;
-}
-
-export const SettledReference: StoryObj = {
-  name: "Settled reference (no animation)",
+export const Default: StoryObj = {
+  name: "Menu card",
   render: () => {
     const wrap = panel();
     const img = cardImage();
-    img.src = drawCard(BASE_DATA);
+    let data = BASE_DATA;
+    const paint = (): void => {
+      img.src = drawCard(data);
+    };
+    paint();
     wrap.appendChild(img);
     wrap.appendChild(
-      note("The fully-static paint — every animated story should end up looking like this."),
-    );
-    return wrap;
-  },
-};
-
-export const EmberParticles: StoryObj = {
-  name: "Ember particles while menu is open (issue #53)",
-  render: () => {
-    const { wrap, getData } = mountLiveCard();
-    // Prime the session with one settled frame before embers can attach — in
-    // production the card always has data before the menu can be opened.
-    renderCardFrame(getData(), performance.now());
-
-    wrap.appendChild(emberToggleButton("Open menu (start embers)", "Close menu (stop embers)"));
-    wrap.appendChild(
-      note(
-        'Spike check: watch for flicker/stutter with the menu "open" for 30s+ — this loop runs at the same ' +
-          "~24fps cadence as the real main-process poller.",
-      ),
-    );
-    return wrap;
-  },
-};
-
-export const DataUpdatesWhileOpen: StoryObj = {
-  name: "Data updates while the menu is open (embers must not glitch)",
-  render: () => {
-    const { wrap, setData, getData } = mountLiveCard();
-
-    wrap.appendChild(
       button("Bump values", () => {
-        setData(bumpedData(getData()));
+        data = bumpedData(data);
+        paint();
       }),
     );
     wrap.appendChild(
       button("New 30-day data", () => {
-        setData({ ...getData(), spark: freshSpark() });
+        data = { ...data, spark: freshSpark() };
+        paint();
       }),
     );
-    wrap.appendChild(emberToggleButton("Open menu", "Close menu"));
     wrap.appendChild(
-      note(
-        "Values/bars now render statically (issues #52/#54 were removed — see ADR-013), so this checks " +
-          "that a data change repaints instantly without disturbing an active ember loop.",
-      ),
+      button("Toggle theme", () => {
+        data = { ...data, dark: !data.dark };
+        paint();
+      }),
     );
     return wrap;
   },

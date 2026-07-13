@@ -1,32 +1,21 @@
-import type { CardFrame, MenuCardData } from "../types.js";
-import {
-  createEmberField,
-  type EmberField,
-  type EmberInstance,
-  emberInstancesAt,
-} from "./animation.js";
-import { EMBER_SEED, EMBERS } from "./animation-config.js";
+import type { MenuCardData } from "../types.js";
 
 // Browser-context renderer for the tray's "stats card". The main process drives
-// it through `window.__burnbarRenderCardFrame(data, nowMs)` (see
-// menu-card-window.ts), which paints an off-DOM <canvas> for the given instant
-// and returns a PNG data URL plus whether more frames are needed. Pure(-ish;
-// see `session` below) draw → string: no network, no DOM mutation beyond the
-// throwaway canvas, no Electron — just Canvas 2D.
+// it through `window.__burnbarDrawCard(data)` (see menu-card-window.ts), which
+// paints an off-DOM <canvas> and returns a PNG data URL. Pure draw → string: no
+// network, no DOM mutation beyond the throwaway canvas, no Electron — just
+// Canvas 2D.
 //
-// Animation state (`session`) is module-scoped rather than passed in, because
-// the hidden BrowserWindow that hosts this page is created once and reused for
-// the app's lifetime (see ADR-009) — the main process only supplies the latest
-// data and the current time; this module remembers the active ember field
-// across frames. (Issues #52/#54 — an odometer roll and a bar-growth reveal —
-// were removed: both only ever animated while the tray's native menu was
-// closed or about to open, never while a user had it open, so neither could
-// ever be seen. See ADR-013.)
+// The card previously animated (an odometer-style digit roll, a bar-chart
+// grow-from-baseline reveal, and drifting ember particles — issues #52/#53/#54,
+// see ADR-013). All three were removed: Electron only repaints a MenuItem's
+// icon right before a menu opens or once it closes, never while the native
+// tray dropdown is already open and idle, so none of the three animations
+// could ever actually be seen. See ADR-013's amendments.
 
 declare global {
   interface Window {
-    __burnbarRenderCardFrame: (data: MenuCardData, nowMs: number) => CardFrame;
-    __burnbarSetEmbersActive: (active: boolean, nowMs: number) => void;
+    __burnbarDrawCard: (data: MenuCardData) => string;
     // Tiny monochrome menu-row glyphs; the main process marks them template images.
     __burnbarDrawIcon: (name: "refresh" | "dashboard") => string;
   }
@@ -53,7 +42,6 @@ const FOOT = "#73737f";
 const BAR_TOP = "#e08b54";
 const BAR_BOTTOM = "#c4744a";
 const AXIS = "rgba(255, 255, 255, 0.06)";
-const EMBER_RGB = "232, 141, 84"; // same warm hue family as the bars
 
 const FONT_STACK = `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif`;
 const LABEL_FONT = `600 11px ${FONT_STACK}`;
@@ -119,38 +107,10 @@ function drawBars(
   }
 }
 
-// --- Ember particles (issue #53) --------------------------------------------
-
-function drawEmbers(ctx: CanvasRenderingContext2D, instances: EmberInstance[]): void {
-  const region = { x: PAD, width: W - PAD * 2, top: BARS_TOP };
-  for (const instance of instances) {
-    if (instance.opacity <= 0.01) {
-      continue;
-    }
-    const x = region.x + instance.xFrac * region.width;
-    const y = region.top - instance.riseFrac * EMBERS.riseDistance;
-    ctx.save();
-    ctx.fillStyle = `rgba(${EMBER_RGB}, ${instance.opacity.toFixed(3)})`;
-    ctx.shadowColor = `rgba(${EMBER_RGB}, ${Math.min(1, instance.opacity * 1.4).toFixed(3)})`;
-    ctx.shadowBlur = instance.radius * 2.5;
-    ctx.beginPath();
-    ctx.arc(x, y, instance.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-}
-
-// --- Layout + orchestration --------------------------------------------------
-
 type CardCanvas = { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D };
 let sharedCard: CardCanvas | null = null;
 
-/**
- * Lazily creates one canvas+context and reuses it for every frame. `paintCard`
- * runs up to ~24×/sec while animating (indefinitely while embers are active),
- * so allocating a fresh backing store per frame would be wasteful — each call
- * fully repaints anyway, so a cleared, reused canvas is behaviorally identical.
- */
+/** Lazily creates one canvas+context and reuses it across renders (each call fully repaints anyway). */
 function cardCanvas(): CardCanvas | null {
   if (sharedCard) {
     return sharedCard;
@@ -173,11 +133,11 @@ type StatSpec = {
   value: string;
 };
 
-/** Paints one frame given already-resolved animation state; owns no session/timing bookkeeping. */
-function paintCard(data: MenuCardData, emberInstances: EmberInstance[] | null): CardFrame {
+/** Renders the stats card as a PNG data URL; `""` on a canvas-context failure. */
+export function drawCard(data: MenuCardData): string {
   const card = cardCanvas();
   if (!card) {
-    return { png: "", animating: false };
+    return "";
   }
   const { canvas, ctx } = card;
   ctx.resetTransform();
@@ -200,12 +160,6 @@ function paintCard(data: MenuCardData, emberInstances: EmberInstance[] | null): 
 
   drawBars(ctx, data.spark, BARS_TOP, BARS_HEIGHT);
 
-  let animating = false;
-  if (emberInstances && emberInstances.length > 0) {
-    drawEmbers(ctx, emberInstances);
-    animating = true;
-  }
-
   if (data.topModel) {
     ctx.fillStyle = LABEL;
     ctx.font = `500 11px ${FONT_STACK}`;
@@ -215,59 +169,11 @@ function paintCard(data: MenuCardData, emberInstances: EmberInstance[] | null): 
   ctx.font = `400 10px ${FONT_STACK}`;
   ctx.fillText("Estimated from local logs at API rates", PAD, 188);
 
-  return { png: canvas.toDataURL("image/png"), animating };
+  return canvas.toDataURL("image/png");
 }
 
-export type CardSession = {
-  emberField: EmberField | null;
-};
-
-/**
- * Pure state transition: carries the active ember field forward from the
- * previous session (or `null` on first paint). No DOM/canvas — kept separate
- * from `renderCardFrame` specifically so it's unit-testable
- * (`test/menu-card-session.test.ts`) without a browser environment.
- */
-export function nextCardSession(session: CardSession | null): CardSession {
-  return { emberField: session?.emberField ?? null };
-}
-
-let session: CardSession | null = null;
-
-/** Forget animation history (used by Storybook/tests so switching examples starts clean). */
-export function resetCardSession(): void {
-  session = null;
-}
-
-/** Renders the card as of `nowMs`. Ember particles ride along whenever `setEmbersActive` last turned them on. */
-export function renderCardFrame(data: MenuCardData, nowMs: number): CardFrame {
-  session = nextCardSession(session);
-  const emberInstances = session.emberField
-    ? emberInstancesAt(session.emberField, EMBERS, nowMs)
-    : null;
-
-  return paintCard(data, emberInstances);
-}
-
-/** Start/stop the ember loop (menu open/close). The pattern's *shape* (particle positions/sizes) stays fixed across activations via `EMBER_SEED` — only its start time is fresh — so it reads as a stable motif, not a reshuffled scatter each time the menu opens. */
-export function setEmbersActive(active: boolean, nowMs: number): void {
-  if (!session) {
-    return; // nothing rendered yet to animate embers over
-  }
-  session = { ...session, emberField: active ? createEmberField(EMBER_SEED, nowMs, EMBERS) : null };
-}
-
-/** A fully static render (no embers) — the settled look, also used by Storybook's reference story. */
-export function drawCard(data: MenuCardData): string {
-  return paintCard(data, null).png;
-}
-
-// Guarded so this module stays importable from plain Node (Vitest, no DOM)
-// for the pure exports (e.g. `nextCardSession`) — in the browser, `window`
-// is always defined and this always runs.
 if (typeof window !== "undefined") {
-  window.__burnbarRenderCardFrame = renderCardFrame;
-  window.__burnbarSetEmbersActive = setEmbersActive;
+  window.__burnbarDrawCard = drawCard;
 }
 
 // --- Menu-row icons -------------------------------------------------------

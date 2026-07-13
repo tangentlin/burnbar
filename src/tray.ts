@@ -1,6 +1,5 @@
 import {
   Menu,
-  type MenuItem,
   type MenuItemConstructorOptions,
   type NativeImage,
   Tray,
@@ -11,7 +10,6 @@ import {
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CardAnimator } from "./card-animator.js";
 import type { MenuCardRenderer } from "./menu-card-window.js";
 import { REFRESH_PRESETS_MINUTES } from "./settings.js";
 import { formatIntervalLabel, formatRelativeTime } from "./time.js";
@@ -19,11 +17,6 @@ import { type IconAppearance, badgeForStatus, composeBadgedIconBitmap } from "./
 import type { MenuCardData, TrayState, UpdateState, UsageData } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// The stats-card MenuItem's `id`, so `rebuildMenu` can fetch a live reference
-// to it via `Menu.getMenuItemById` — the animator mutates `.icon` directly on
-// that reference while the menu is open, without a full menu rebuild.
-const CARD_MENU_ITEM_ID = "stats-card";
 
 // Keep "Updated X ago" honest between data refreshes (UI-only; no ccusage call).
 const LABEL_REFRESH_MS = 60_000;
@@ -86,13 +79,6 @@ export class TrayManager {
   private dashboardIcon: NativeImage | null = null;
   // Transparent gutter filler so text on icon-less rows aligns with icon'd rows.
   private readonly spacerIcon = transparentIcon();
-  // Live reference to the currently-built card MenuItem, so the animator can
-  // mutate its `.icon` in place (odometer roll / bar growth / embers) without
-  // tearing down and rebuilding the whole menu on every animation frame.
-  private cardMenuItem: MenuItem | null = null;
-  // Drives the card's frame-at-a-time animation: bounded runs on data change,
-  // an ambient ember loop while the menu is open. See card-animator.ts.
-  private readonly cardAnimator: CardAnimator;
   // Re-render the (transparent) card when the menu switches light/dark — its data
   // signature now carries the appearance, so this just re-runs the cached render.
   // The badged icon is appearance-specific too, so refresh it on the same switch.
@@ -104,13 +90,7 @@ export class TrayManager {
   constructor(
     private readonly callbacks: TrayCallbacks,
     private readonly cardRenderer: MenuCardRenderer,
-  ) {
-    this.cardAnimator = new CardAnimator(
-      (data, nowMs) => this.cardRenderer.renderFrame(data, nowMs),
-      (active, nowMs) => this.cardRenderer.setEmbersActive(active, nowMs),
-      { onFrame: (image) => this.handleCardFrame(image) },
-    );
-  }
+  ) {}
 
   initialize(): void {
     const iconPath = path.join(__dirname, "..", "assets", "icon.png");
@@ -242,14 +222,13 @@ export class TrayManager {
       this.labelTimer = null;
     }
     nativeTheme.removeListener("updated", this.handleThemeChange);
-    this.cardAnimator.dispose();
     if (this.tray) {
       this.tray.destroy();
       this.tray = null;
     }
   }
 
-  /** Kick off the card's animated render only when its underlying numbers changed. */
+  /** Re-render the card only when its underlying numbers changed, then rebuild the menu with the new image. */
   private refreshCard(state: TrayState): void {
     const data = toCardData(state);
     const signature = JSON.stringify(data);
@@ -257,25 +236,15 @@ export class TrayManager {
       return;
     }
     this.cardSignature = signature;
-    this.cardAnimator.onData(data);
-  }
-
-  /** Every animation frame lands here: cache it for the next menu open, and if the menu is open right now, push it live. */
-  private handleCardFrame(image: NativeImage | null): void {
-    const hadImage = this.cardImage !== null;
-    this.cardImage = image;
-    if (image && this.cardMenuItem) {
-      this.cardMenuItem.icon = image;
-    }
-    // The menu's shape (card row vs. plain-text fallback) depends on
-    // `Boolean(cardImage)`, same as `buildMenuItems` — rebuild whenever that
-    // flips, in *either* direction: cold start / recovering from a render
-    // failure (fallback → card) as well as a frame that unexpectedly comes
-    // back null after a previous success (card → fallback). Steady-state
-    // animation frames (image → image) never rebuild.
-    if (hadImage !== (image !== null)) {
+    void this.cardRenderer.render(data).then((image) => {
+      // A newer refresh may have already landed and changed the signature again;
+      // an older, now-stale render must not clobber it.
+      if (signature !== this.cardSignature) {
+        return;
+      }
+      this.cardImage = image;
       this.rebuildMenu();
-    }
+    });
   }
 
   private rebuildMenu(): void {
@@ -284,11 +253,6 @@ export class TrayManager {
     }
     this.updateTitle(this.state.usage);
     const menu = Menu.buildFromTemplate(this.buildMenuItems(this.state));
-    this.cardMenuItem = menu.getMenuItemById(CARD_MENU_ITEM_ID);
-    // The tray menu is a plain native Menu, so `menu-will-show`/`menu-will-close`
-    // fire on it like any other — that's the ember loop's whole lifecycle.
-    menu.on("menu-will-show", () => this.cardAnimator.setMenuOpen(true));
-    menu.on("menu-will-close", () => this.cardAnimator.setMenuOpen(false));
     this.tray.setContextMenu(menu);
   }
 
@@ -311,7 +275,7 @@ export class TrayManager {
     if (state.usage.error) {
       items.push({ label: "Error loading usage data", enabled: false });
     } else if (this.cardImage) {
-      items.push({ id: CARD_MENU_ITEM_ID, label: "", icon: this.cardImage, enabled: false });
+      items.push({ label: "", icon: this.cardImage, enabled: false });
     } else {
       // Brief gap before the first card render (or a render failure): plain text.
       this.addFallbackUsageItems(items, state.usage);

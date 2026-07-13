@@ -10,14 +10,13 @@
 | `CaptureService` | Single owner of the ccusage call feeding tray **and** archive | [capture-service.ts](../src/capture-service.ts) |
 | `ArchiveStore` | Read/merge/persist the durable archive (pure merge + atomic IO) | [store.ts](../src/store.ts) |
 | `TrayManager` | Display-only menu-bar rendering + "Open Usage Dashboard…" | [tray.ts](../src/tray.ts) |
-| `MenuCardRenderer` | Hidden window rasterizing one menu-stats-card animation frame to a `NativeImage` | [menu-card-window.ts](../src/menu-card-window.ts) |
-| `CardAnimator` | Frame-poll loop driving `MenuCardRenderer`: bounded on data change, ambient while the menu is open | [card-animator.ts](../src/card-animator.ts) |
+| `MenuCardRenderer` | Hidden window rasterizing the menu stats card to a `NativeImage` | [menu-card-window.ts](../src/menu-card-window.ts) |
 | `DashboardWindow` + `registerArchiveIpc` | Chart.js window; read-only `archive:get-series` channel | [window.ts](../src/window.ts), [ipc.ts](../src/ipc.ts) |
 | `AboutWindow` | Static credits/links window — no preload/IPC | [about-window.ts](../src/about-window.ts) |
 | `UpdateService` | electron-updater lifecycle (check/download/install) feeding the tray's update row | [update-service.ts](../src/update-service.ts) |
 | `UpdateNotifier` | OS notifications on the actionable update transitions + post-restart confirmation | [update-notifier.ts](../src/update-notifier.ts) |
 | `pnpm build:renderer` | esbuild-bundle both browser renderers — the dashboard (+ Chart.js) and the menu card | [scripts/build-renderer.mjs](../scripts/build-renderer.mjs) |
-| `pnpm storybook` | Preview browser-representable states (the update badge, notification copy, menu-card animations) in isolation, no app launch | [.storybook/](../.storybook/), [stories/](../stories/), [storybook.md](./storybook.md) |
+| `pnpm storybook` | Preview browser-representable states (the update badge, notification copy, the menu card) in isolation, no app launch | [.storybook/](../.storybook/), [stories/](../stories/), [storybook.md](./storybook.md) |
 | `electron-builder` config | Packaging / signing / notarization / GitHub-Releases publish (electron-updater feed) | [electron-builder.config.cjs](../electron-builder.config.cjs) |
 
 ## Composition Overview
@@ -37,11 +36,9 @@ flowchart TD
     svc -->|onState TrayState| tray
     svc -->|merge records| store["ArchiveStore (store.ts)"]
     store -->|atomic JSON| archive[("userData/archive")]
-    tray -->|onData / setMenuOpen| anim["CardAnimator<br/>(frame-poll loop)"]
-    anim -->|renderFrame executeJavaScript| card
-    card -->|executeJavaScript| cardr["menu-card/card.ts<br/>(Canvas 2D + animation.ts)"]
-    card -->|NativeImage per frame| anim
-    anim -->|onFrame: mutate live icon| tray
+    tray -->|render, on data change| card
+    card -->|executeJavaScript| cardr["menu-card/card.ts<br/>(Canvas 2D, no animation)"]
+    card -->|NativeImage| tray
     tray -->|Open Dashboard| win
     win -->|loadFile| renderer["dashboard/renderer.ts<br/>(Chart.js, esbuild bundle)"]
     renderer -->|burnbar.getSeries| preload["preload.mjs"]
@@ -55,7 +52,7 @@ flowchart TD
     notif -->|Notification| os[("macOS Notification Center")]
 ```
 
-Single Electron **main** process. The tray-only design grew three browser **renderers**: the on-demand dashboard window, a hidden, never-shown window the tray drives to rasterize its stats card, and the on-demand About window. [main.ts](../src/main.ts) wires the parts; [capture-service.ts](../src/capture-service.ts) owns the one external call and is the only writer of the archive; [tray.ts](../src/tray.ts) is a pure display consumer that owns a [`CardAnimator`](../src/card-animator.ts) (feeding it `onData`/`setMenuOpen`, asking [menu-card-window.ts](../src/menu-card-window.ts) to paint each animation frame, and mutating a live `MenuItem.icon` per frame — [ADR-013](./adr/013-menu-card-animation-framework.md)) and renders [update-service.ts](../src/update-service.ts)'s state into a single tray-only update row; the dashboard reads the archive only through the `burnbar.getSeries` preload channel. The About window is the odd one out: static credits/links content with no preload and no IPC — see [about-window.ts](../src/about-window.ts). Pure logic lives in [store.ts](../src/store.ts) (merge), [derive.ts](../src/derive.ts) (series), and [menu-card/animation.ts](../src/menu-card/animation.ts) (tween/particle math) and is unit-tested in isolation.
+Single Electron **main** process. The tray-only design grew three browser **renderers**: the on-demand dashboard window, a hidden, never-shown window the tray drives to rasterize its stats card, and the on-demand About window. [main.ts](../src/main.ts) wires the parts; [capture-service.ts](../src/capture-service.ts) owns the one external call and is the only writer of the archive; [tray.ts](../src/tray.ts) is a pure display consumer that asks [menu-card-window.ts](../src/menu-card-window.ts) to render the card once per data change and rebuilds the menu with the result (no animation — an odometer roll, a bar-growth reveal, and ember particles were all tried and removed; see [ADR-013](./adr/013-menu-card-animation-framework.md)) and renders [update-service.ts](../src/update-service.ts)'s state into a single tray-only update row; the dashboard reads the archive only through the `burnbar.getSeries` preload channel. The About window is the odd one out: static credits/links content with no preload and no IPC — see [about-window.ts](../src/about-window.ts). Pure logic lives in [store.ts](../src/store.ts) (merge) and [derive.ts](../src/derive.ts) (series) and is unit-tested in isolation.
 
 ## Data Flow
 
@@ -72,13 +69,13 @@ sequenceDiagram
     C-->>S: CcusageDailyReport
     S->>A: deriveSeries(readAllDaily) → MenuCard (30d cost/tokens, top model, bars)
     S->>T: onState(TrayState {usage, lastUpdatedAt, card, interval})
-    T->>T: CardAnimator polls MenuCardRenderer.renderFrame() (only when the signature changed) → NativeImage per frame, mutated live onto the menu icon
+    T->>T: MenuCardRenderer.render() (only when the signature changed) → NativeImage, menu rebuilt with the new icon
     S->>A: mergeDaily(record) per date — writes only on change (dirty check)
     Note over S,A: sessions on launch / day-rollover / quit → mergeSessions
 ```
 
 1. **Ingest** — `CaptureService` calls `capture.ts`, which spawns the bundled ccusage CLI via the current runtime with `ELECTRON_RUN_AS_NODE=1` and `-z <tz>`. — [capture.ts:33-58](../src/capture.ts#L33-L58)
-2. **Render** — the daily report becomes `UsageData`, and the archive yields a derived `MenuCard` (30-day figures); both go to the tray, which (when the data actually changed) kicks off `CardAnimator`, which polls the hidden `MenuCardRenderer` window and mutates the live menu icon (display only). — [capture.ts#toUsageData](../src/capture.ts#L124), [capture-service.ts#computeCard](../src/capture-service.ts#L201), [card-animator.ts](../src/card-animator.ts), [menu-card-window.ts](../src/menu-card-window.ts)
+2. **Render** — the daily report becomes `UsageData`, and the archive yields a derived `MenuCard` (30-day figures); both go to the tray, which (when the data actually changed) asks the hidden `MenuCardRenderer` window to render once and rebuilds the menu with the resulting image (display only). — [capture.ts#toUsageData](../src/capture.ts#L124), [capture-service.ts#computeCard](../src/capture-service.ts#L201), [menu-card-window.ts](../src/menu-card-window.ts)
 3. **Persist** — the same report is normalized to records and merged under keep-richest; writes are atomic and dirty-checked. — [capture-service.ts](../src/capture-service.ts), [store.ts](../src/store.ts)
 
 ### Read (dashboard)
@@ -89,7 +86,7 @@ The renderer asks `window.burnbar.getSeries({range, dimension})`; the preload fo
 
 - **The archive is the only persistent state** — per-day JSON, monthly-sharded sessions, and a manifest under `userData/archive`. Each merge is atomic and idempotent. — [store.ts](../src/store.ts), [ADR-006](./adr/006-durable-usage-archive.md)
 - `CaptureService` holds the refresh timer, the latest `UsageData`, an in-memory `dailyCache` (mirrors disk to skip unchanged days), and the day-rollover marker. — [capture-service.ts:40-47](../src/capture-service.ts#L40-L47)
-- The tray retains its `Tray` handle, the latest state, the cached card bitmap (keyed by a signature of the card data, so the 60 s label tick reuses it), a live reference to the card `MenuItem`, and one owned `CardAnimator` (its own state: the latest data, the bounded-run deadline, whether the menu is open); the dashboard and About windows are each created lazily and dropped on close; the menu-card window is created once and reused. — [tray.ts](../src/tray.ts), [card-animator.ts](../src/card-animator.ts), [menu-card-window.ts](../src/menu-card-window.ts), [window.ts](../src/window.ts), [about-window.ts](../src/about-window.ts)
+- The tray retains its `Tray` handle, the latest state, and the cached card bitmap (keyed by a signature of the card data, so the 60 s label tick and unchanged re-captures reuse it); the dashboard and About windows are each created lazily and dropped on close; the menu-card window is created once and reused. — [tray.ts](../src/tray.ts), [menu-card-window.ts](../src/menu-card-window.ts), [window.ts](../src/window.ts), [about-window.ts](../src/about-window.ts)
 - `UpdateService` holds its own fixed-interval timer (independent of the usage-refresh interval) and the latest `UpdateState`; `main.ts` fans that state out to the tray (a single state-driven menu row **plus** a colored icon badge on the actionable states, composited by the pure [tray-icon.ts](../src/tray-icon.ts)) and to [UpdateNotifier](../src/update-notifier.ts) (OS notifications on the actionable transitions + a post-restart confirmation keyed off `settings.lastRunVersion`). — [update-service.ts](../src/update-service.ts), [ADR-011](./adr/011-auto-update-mechanism.md)
 
 ## Cross-Cutting Concerns
