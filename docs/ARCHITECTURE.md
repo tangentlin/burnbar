@@ -78,7 +78,7 @@ sequenceDiagram
 ```
 
 1. **Ingest** — `CaptureService` calls `capture.ts`, which spawns the bundled ccusage CLI via the current runtime with `ELECTRON_RUN_AS_NODE=1` and `-z <tz>`. — [capture.ts:33-58](../src/capture.ts#L33-L58)
-2. **Render** — the daily report becomes `UsageData`, and the archive yields a derived `MenuCard` (30-day figures); both go to the tray, which (when the data actually changed) kicks off `CardAnimator`, which polls the hidden `MenuCardRenderer` window frame by frame — an odometer roll and/or bar-growth reveal — and mutates the live menu icon (display only). — [capture.ts#toUsageData](../src/capture.ts#L124), [capture-service.ts#computeCard](../src/capture-service.ts#L201), [card-animator.ts](../src/card-animator.ts), [menu-card-window.ts](../src/menu-card-window.ts)
+2. **Render** — the daily report becomes `UsageData`, and the archive yields a derived `MenuCard` (30-day figures); both go to the tray, which (when the data actually changed) kicks off `CardAnimator`, which polls the hidden `MenuCardRenderer` window and mutates the live menu icon (display only). — [capture.ts#toUsageData](../src/capture.ts#L124), [capture-service.ts#computeCard](../src/capture-service.ts#L201), [card-animator.ts](../src/card-animator.ts), [menu-card-window.ts](../src/menu-card-window.ts)
 3. **Persist** — the same report is normalized to records and merged under keep-richest; writes are atomic and dirty-checked. — [capture-service.ts](../src/capture-service.ts), [store.ts](../src/store.ts)
 
 ### Read (dashboard)

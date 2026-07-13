@@ -24,11 +24,12 @@ const meta: Meta = {
           "The tray's stats card, driven by the real animation engine " +
           "(`src/menu-card/animation.ts` + `src/menu-card/card.ts`) — these stories call the exact " +
           "`renderCardFrame`/`setEmbersActive`/`drawCard` functions Electron's hidden renderer window calls, " +
-          "not a re-implementation. They also double as the frame-rate/flicker spike issues #52-#54 asked for " +
-          "before committing to the full build: the ember loop here runs at the same ~24fps cadence as the real " +
-          "main-process poller (`card-animator.ts`'s own `FRAME_INTERVAL_MS`). What they *can't* confirm is " +
-          "whether swapping a live `MenuItem.icon` on an already-open native macOS menu is smooth — that's " +
-          "Electron/AppKit behavior only verifiable on a real Mac. See ADR-013.",
+          "not a re-implementation. The ember loop here runs at the same ~24fps cadence as the real " +
+          "main-process poller (`card-animator.ts`'s own `FRAME_INTERVAL_MS`). Issues #52 (odometer digit-roll) " +
+          "and #54 (bar-growth reveal) were removed after ADR-013's open verification item resolved: Electron " +
+          "only repaints a `MenuItem.icon` at `menuNeedsUpdate:`/`menuDidClose:`, never while the native menu " +
+          "sits open and idle, so neither could ever be seen. Embers (#53) survive here for reference/future " +
+          "reuse even though the same limitation applies to them in production — see ADR-013.",
       },
     },
   },
@@ -176,61 +177,6 @@ export const SettledReference: StoryObj = {
   },
 };
 
-export const OdometerDigitRoll: StoryObj = {
-  name: "Odometer digit roll (issue #52)",
-  render: () => {
-    const { wrap, setData, getData } = mountLiveCard();
-
-    wrap.appendChild(
-      button("Bump values (roll digits)", () => {
-        setData(bumpedData(getData()));
-      }),
-    );
-    let autoplay: ReturnType<typeof setInterval> | null = null;
-    const autoplayBtn = button("Start autoplay", () => {
-      if (autoplay) {
-        clearInterval(autoplay);
-        autoplay = null;
-        autoplayBtn.textContent = "Start autoplay";
-        return;
-      }
-      autoplayBtn.textContent = "Stop autoplay";
-      autoplay = setInterval(() => {
-        setData(bumpedData(getData()));
-      }, 2200);
-    });
-    wrap.appendChild(autoplayBtn);
-    wrap.appendChild(
-      note(
-        "First paint never rolls (nothing to roll from); each bump rolls only the digits that changed.",
-      ),
-    );
-    return wrap;
-  },
-};
-
-export const BarGrowthReveal: StoryObj = {
-  name: "Bar-chart grow-from-baseline (issue #54)",
-  render: () => {
-    const { wrap, setData, getData } = mountLiveCard();
-
-    wrap.appendChild(
-      button("New 30-day data (regrow bars)", () => {
-        setData({ ...getData(), spark: freshSpark() });
-      }),
-    );
-    wrap.appendChild(
-      button("Toggle theme only (must NOT replay)", () => {
-        setData({ ...getData(), dark: !getData().dark });
-      }),
-    );
-    wrap.appendChild(
-      note("Reload the story to see the initial from-baseline reveal on first paint."),
-    );
-    return wrap;
-  },
-};
-
 export const EmberParticles: StoryObj = {
   name: "Ember particles while menu is open (issue #53)",
   render: () => {
@@ -250,8 +196,8 @@ export const EmberParticles: StoryObj = {
   },
 };
 
-export const FullCardLive: StoryObj = {
-  name: "Full card, live (all three together)",
+export const DataUpdatesWhileOpen: StoryObj = {
+  name: "Data updates while the menu is open (embers must not glitch)",
   render: () => {
     const { wrap, setData, getData } = mountLiveCard();
 
@@ -266,6 +212,12 @@ export const FullCardLive: StoryObj = {
       }),
     );
     wrap.appendChild(emberToggleButton("Open menu", "Close menu"));
+    wrap.appendChild(
+      note(
+        "Values/bars now render statically (issues #52/#54 were removed — see ADR-013), so this checks " +
+          "that a data change repaints instantly without disturbing an active ember loop.",
+      ),
+    );
     return wrap;
   },
 };
