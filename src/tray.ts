@@ -326,10 +326,12 @@ export class TrayManager {
       label: `About Burnbar ${app.getVersion()}`,
       click: () => this.callbacks.onAbout(),
     });
-    items.push({ label: "Open Log Folder", click: () => this.callbacks.onOpenLogFolder() });
     items.push({
-      label: "Copy Diagnostics to Desktop",
-      click: () => this.callbacks.onCopyDiagnostics(),
+      label: "Troubleshooting",
+      submenu: [
+        { label: "Open Log Folder", click: () => this.callbacks.onOpenLogFolder() },
+        { label: "Copy Diagnostics to Desktop", click: () => this.callbacks.onCopyDiagnostics() },
+      ],
     });
     items.push(this.buildUpdateItem(this.updateState));
 
