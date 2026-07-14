@@ -21,7 +21,7 @@ Burnbar is a **tray-only, no-window** app by design ([ARCHITECTURE.md](../ARCHIT
 
 ### Tray-only UX sketch
 
-Exactly one menu row is always present (never absent — there is no separate "Up to date" row), placed in the About/Open Log Folder/Copy Diagnostics section just above the final separator + Quit. Its label and click behavior are driven entirely by `UpdateService`'s current state:
+Exactly one menu row is always present (never absent — there is no separate "Up to date" row), placed after About Burnbar and the Troubleshooting submenu, just above the final separator + Quit. Its label and click behavior are driven entirely by `UpdateService`'s current state:
 
 ```
 idle / not-available / error  →  "Check for Updates"        (clickable — manual trigger)
