@@ -238,17 +238,6 @@ export type MenuCardData = MenuCard & {
 };
 
 /**
- * One animation frame from the browser-context card renderer: the painted PNG
- * plus whether the caller should keep polling for more frames. `animating` is
- * true while an odometer roll or bar-growth tween is mid-flight, or while
- * ember particles are active — see [src/menu-card/card.ts](../src/menu-card/card.ts).
- */
-export type CardFrame = {
-  png: string;
-  animating: boolean;
-};
-
-/**
  * Everything the tray renders, pushed by the CaptureService on each capture and
  * on settings/refresh actions. Carries the display numbers plus the menu's
  * "last updated" stamp, the derived 30-day card figures, and the active interval.

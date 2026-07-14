@@ -91,9 +91,8 @@ Single Electron **main** process, tray-first, with one on-demand dashboard windo
 - **`src/store.ts`** — `ArchiveStore`: the **pure** "keep richest, never shrink" merge plus atomic temp-then-rename JSON IO, monthly-sharded sessions, and the manifest. Highest-stakes module.
 - **`src/derive.ts`** — **pure** archive → `DashboardSeries` (cost over time, by model, by agent; 30d/90d/all).
 - **`src/time.ts`** — `systemTimezone` / `localDateString`; the pinned IANA tz passed to ccusage (`-z`) and recorded in the manifest.
-- **`src/tray.ts`** — **display-only** `TrayManager`: renders the pushed state as a rich, **animated** bitmap "stats card" (today + 30-day spend/tokens, bar chart, top model) plus Refresh / Auto-Refresh / Open Dashboard / **About Burnbar** / the state-driven update row. Owns a `CardAnimator` and mutates the live card `MenuItem.icon` per animation frame.
-- **`src/menu-card-window.ts` / `src/menu-card/`** — the card renderer: `MenuCardRenderer` drives a hidden `BrowserWindow` whose canvas (`__burnbarRenderCardFrame`) paints one animation frame and returns a PNG the tray shows as a menu-item icon. See [docs/adr/009](docs/adr/009-menu-stats-card.md).
-- **`src/card-animator.ts` / `src/menu-card/animation.ts`** — the animation framework: `CardAnimator` polls `renderFrame` on a bounded (data-change) or ambient (menu-open) loop; `animation.ts` is the DOM-free Tween/easing/ember-particle math both it and `card.ts` build on. Odometer digit-roll, bar-growth reveal, and ember particles — see [docs/adr/013](docs/adr/013-menu-card-animation-framework.md).
+- **`src/tray.ts`** — **display-only** `TrayManager`: renders the pushed state as a rich bitmap "stats card" (today + 30-day spend/tokens, bar chart, top model) plus Refresh / Auto-Refresh / Open Dashboard / **About Burnbar** / the state-driven update row. Re-renders the card only when its data signature changes, then rebuilds the menu with the result — no animation (see below).
+- **`src/menu-card-window.ts` / `src/menu-card/`** — the card renderer: `MenuCardRenderer` drives a hidden `BrowserWindow` whose canvas (`__burnbarDrawCard`) paints and returns a PNG the tray shows as a menu-item icon. See [docs/adr/009](docs/adr/009-menu-stats-card.md). A prior animation framework (`CardAnimator`, `src/menu-card/animation.ts`) drove an odometer digit-roll, a bar-growth reveal, and ember particles here; all three were built and then fully reverted once traced Electron internals confirmed a `MenuItem`'s icon is never repainted while the native tray menu is already open — see [docs/adr/013](docs/adr/013-menu-card-animation-framework.md).
 - **`src/ipc.ts` / `src/preload.mts` / `src/window.ts` / `src/dashboard/`** — the read-only `archive:get-series` channel and the Chart.js dashboard (contextIsolation on, nodeIntegration off).
 - **`src/about-window.ts` / `src/about/`** — `AboutWindow`: a static credits/links page (app version, ccusage, the forked-from app, the icon artist, GitHub + social links) with no preload/IPC; every link opens via `shell.openExternal`.
 - **`src/update-service.ts`** — `UpdateService` owns the electron-updater lifecycle (check/download/install) on its own fixed 4h timer, independent of the usage-refresh interval. `autoDownload` is always `false`; `quitAndInstall()` only fires from the tray's explicit "Restart to Update" click. See [docs/adr/011](docs/adr/011-auto-update-mechanism.md).
@@ -149,8 +148,7 @@ src/
 ├── settings.ts        # Persisted preferences (refresh interval; 0 = manual)
 ├── time.ts            # tz helpers + relative-time / interval formatting
 ├── tray.ts            # Display-only tray: title, menu, stats card, Refresh, Auto-Refresh, About, update row
-├── menu-card-window.ts # MenuCardRenderer: hidden window → canvas → one card animation frame
-├── card-animator.ts   # CardAnimator: main-process frame-poll loop (bounded on data change, ambient while menu open)
+├── menu-card-window.ts # MenuCardRenderer: hidden window → canvas → card PNG
 ├── ipc.ts             # Read-only archive:get-series handler
 ├── preload.mts        # contextBridge → window.burnbar.getSeries (→ preload.mjs)
 ├── window.ts          # DashboardWindow (BrowserWindow + security)
@@ -161,17 +159,15 @@ src/
 │   ├── index.html
 │   ├── renderer.ts    # Chart.js wiring, range/dimension toggles
 │   └── dashboard.css
-├── menu-card/         # Browser-context card renderer + animation engine (esbuild-bundled)
+├── menu-card/         # Browser-context card renderer, no animation (esbuild-bundled)
 │   ├── index.html
-│   ├── card.ts        # Canvas → PNG stats card frame (__burnbarRenderCardFrame); odometer roll, bar growth, embers
-│   ├── animation.ts   # DOM-free: Tween/easing + seeded ember particle field (Vitest-tested)
-│   └── animation-config.ts # Every animation's tunables (duration/stagger/easing/particle counts) in one place
+│   └── card.ts        # Canvas → PNG stats card (__burnbarDrawCard); a prior animation framework here was fully reverted, see docs/adr/013
 └── about/             # Browser-context About page (esbuild-bundled)
     ├── index.html     # Credits + links markup (logo copied in at build time from assets/burnbar.svg)
     ├── about.css
     └── about.ts       # Injects app version from the loadFile query string
 test/                  # Vitest unit tests + JSON fixtures
-stories/                # Storybook stories (badge, notifications, menu card animations)
+stories/                # Storybook stories (badge, notifications, menu card)
 scripts/build-renderer.mjs  # esbuild bundle for the renderers (dashboard + menu card + about)
 assets/icon.png        # Tray icon
 dist/                  # tsc + esbuild output (git-ignored)

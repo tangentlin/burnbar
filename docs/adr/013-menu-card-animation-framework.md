@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted, with one open verification item (see [Consequences](#consequences)).
+Superseded — fully reverted. See [Amendment: the verification item resolved false (2026-07)](#amendment-the-verification-item-resolved-false-2026-07) and [Amendment: full removal (2026-07)](#amendment-full-removal-2026-07). The framework this ADR describes (`CardAnimator`, `src/menu-card/animation.ts`, `src/menu-card/animation-config.ts`, the `(data, nowMs) → { png, animating }` render contract) no longer exists in the codebase — this document is kept as a historical record of why it was built and why it didn't work.
 
 ## Context
 
@@ -46,3 +46,27 @@ Because the engine is a pure function of time, [`stories/menu-card.stories.ts`](
 ## Related
 
 [ADR-009](./009-menu-stats-card.md) (the card itself), [modules/menu-card.md](../modules/menu-card.md), [modules/menu-card-window.md](../modules/menu-card-window.md), [modules/tray.md](../modules/tray.md), [storybook.md](../storybook.md), issues #52/#53/#54.
+
+## Amendment: the verification item resolved false (2026-07)
+
+The [open verification item](#consequences) above is resolved, definitively: **no.** Electron only copies a JS-side `MenuItem.icon` value onto the live, on-screen `NSMenuItem` from inside AppKit's `menuNeedsUpdate:` delegate callback — which fires immediately *before* a menu displays (or on a key-equivalent scan) — and again on `menuDidClose:`. There is no path by which repeated `.icon` writes repaint an already-open, idle native menu (traced end-to-end through Electron's current source: `lib/browser/api/menu.ts`/`menu-item.ts` → `shell/browser/api/electron_api_menu.cc` → `shell/browser/ui/cocoa/electron_menu_controller.mm`'s `refreshMenuTree:`/`applyStateToMenuItem:`; this is also the mechanism electron/electron#49678 introduced, "manually managing NSMenuItem state pre-open").
+
+This is a structural fact about the delivery surface, not a timing bug — no alternative trigger (e.g. starting a tween at `menu-will-show` instead of on data change) can make a mid-animation frame visible, since AppKit only ever pulls the current icon once, right before paint.
+
+Consequences for the three animations:
+
+- **#52 (odometer digit-roll) and #54 (bar-chart grow-from-baseline) were removed.** Both depended entirely on frames landing while the menu happened to be open; neither ever could be. The card now always paints stats and bars at their final values directly (`card.ts`'s `drawStat`/`drawBars` are plain, non-tweened draws) — no user-visible regression, since this is exactly the "settled" look both animations always eventually decayed to anyway.
+- **#53 (embers) was kept, initially**, as a deliberately minimal first pass, on the theory it might still be salvageable by relocating onto the always-visible `Tray.setImage()` surface later. See the next amendment for why it was removed too instead.
+
+## Amendment: full removal (2026-07)
+
+With #52 and #54 already gone, #53 (embers) turned out to have no path to visibility either: its entire premise is continuous motion while the menu sits open and idle — exactly the case the previous amendment proved doesn't repaint. Unlike #52/#54, embers can't even fall back to "shows the correct settled state" — there's no non-animated form of "a few particles drifting," so keeping the code bought nothing.
+
+Once embers went, nothing in the app called into the animation machinery at all: `CardAnimator`'s bounded/ambient polling loop existed to serve odometer/bars and the ember loop respectively; the `(data, nowMs) → { png, animating }` frame contract existed only to support incremental frames. With every animation gone, the whole framework collapsed to dead weight around what was, in effect, a single one-shot render per data change — so this iteration reverted it entirely rather than leave an elaborate mechanism with no caller:
+
+- **Deleted**: `src/card-animator.ts` (and `test/card-animator.test.ts`), `src/menu-card/animation.ts` (and `test/menu-card-animation.test.ts`), `src/menu-card/animation-config.ts`, `docs/modules/card-animator.md`, and `test/menu-card-session.test.ts` (the `CardSession`/`nextCardSession` state-transition logic it tested no longer exists).
+- **`src/menu-card/card.ts`** collapsed back to a single `drawCard(data): string` (browser global `window.__burnbarDrawCard`) — the exact pre-ADR-013 shape ADR-009 originally described. No session, no tween/particle state, no `animating` flag.
+- **`src/menu-card-window.ts`**'s `MenuCardRenderer` collapsed `renderFrame`/`setEmbersActive` into a single `render(data): Promise<NativeImage | null>`, reusing the existing `rasterize()` helper instead of duplicating its logic.
+- **`src/tray.ts`** dropped the `CardAnimator` field, the live `MenuItem.icon` mutation (`cardMenuItem`/`Menu.getMenuItemById`), and the `menu-will-show`/`menu-will-close` listeners (their only job was the ember lifecycle). `refreshCard` now just awaits one `render(data)` call and calls `rebuildMenu()` with the result, guarded by a signature check so a stale, superseded render can't clobber a newer one.
+
+If a future animation idea targets the always-visible tray icon (`Tray.setImage()`, e.g. issue #51's "animated flame reflecting live burn rate") rather than a `MenuItem` inside the dropdown, it does **not** need this framework revived — `Tray.setImage()` already repaints on demand regardless of menu state (proven by the existing update-badge feature in `tray-icon.ts`), so a simple interval timer is sufficient; nothing about the `menuNeedsUpdate:`/`menuDidClose:` limitation applies to it.

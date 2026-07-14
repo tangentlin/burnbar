@@ -2,7 +2,9 @@
 
 ## Purpose
 
-The menu-bar surface — a display-only consumer of `TrayState` **and** `UpdateState`. It owns the template icon and macOS cost title, then renders the context menu: a rich, **animated** stats card bitmap (today + 30-day spend/tokens, a bar chart, top model — see [ADR-013](../adr/013-menu-card-animation-framework.md)) shown as a non-selectable banner, "Open Usage Dashboard…" directly beneath it, an "Updated …" relative-time stamp, Refresh Now, an Auto-Refresh radio submenu, About Burnbar, a Troubleshooting submenu (Open Log Folder / Copy Diagnostics), a single state-driven **update row**, and Quit. The Dashboard and Refresh rows carry template icons. When an update needs action it also swaps the menu-bar icon for a **badged** variant (blue dot = available, orange = downloaded), composited from the template glyph by the pure [tray-icon](./tray-icon.md) helper. It fetches nothing; the [CaptureService](./capture-service.md) pushes usage state via `render`, [UpdateService](./update-service.md) pushes update state via `renderUpdate`, and the card bitmap's frames are produced by the injected [MenuCardRenderer](./menu-card-window.md), scheduled by an owned [CardAnimator](./card-animator.md).
+The menu-bar surface — a display-only consumer of `TrayState` **and** `UpdateState`. It owns the template icon and macOS cost title, then renders the context menu: a rich stats card bitmap (today + 30-day spend/tokens, a bar chart, top model) shown as a non-selectable banner, "Open Usage Dashboard…" directly beneath it, an "Updated …" relative-time stamp, Refresh Now, an Auto-Refresh radio submenu, About Burnbar, a Troubleshooting submenu (Open Log Folder / Copy Diagnostics), a single state-driven **update row**, and Quit. The Dashboard and Refresh rows carry template icons. When an update needs action it also swaps the menu-bar icon for a **badged** variant (blue dot = available, orange = downloaded), composited from the template glyph by the pure [tray-icon](./tray-icon.md) helper. It fetches nothing; the [CaptureService](./capture-service.md) pushes usage state via `render`, [UpdateService](./update-service.md) pushes update state via `renderUpdate`, and the card bitmap is produced by the injected [MenuCardRenderer](./menu-card-window.md).
+
+The card previously animated (odometer digit-roll, bar-chart growth, ember particles — see [ADR-013](../adr/013-menu-card-animation-framework.md)); all three were removed as unreachable in production, and the `CardAnimator` collaborator this module used to own was deleted along with them. Rendering is now a plain "await one image, rebuild the menu" flow.
 
 ## Public Surface
 
@@ -11,7 +13,7 @@ The menu-bar surface — a display-only consumer of `TrayState` **and** `UpdateS
 | `TrayCallbacks` | `{ onOpenDashboard, onRefreshNow, onSetRefreshInterval, onAbout, onOpenLogFolder, onCopyDiagnostics, onCheckForUpdates, onDownloadUpdate, onRestartToUpdate }` | [tray.ts:22](../../src/tray.ts#L22) |
 | `TrayManager` | class (`initialize`, `render`, `renderUpdate`, `dispose`) — constructed with `(callbacks, cardRenderer)` | [tray.ts:49](../../src/tray.ts#L49) |
 
-Module-private: `toCardData()` (merges the derived `MenuCard` with today's numbers into the renderer input); `buildUpdateItem()` (maps `UpdateState` to the single update menu row); `handleCardFrame()` (the `CardAnimator`'s `onFrame` sink); `refreshAppearance()` (re-detects the real menu-bar appearance and repaints anything that depends on it). All menu construction (`buildMenuItems`, `buildAutoRefreshItem`, `buildUpdateItem`, `addFallbackUsageItems`, `updateTitle`, `refreshCard`, `loadIcons`, `rebuildMenu`) is instance-private.
+Module-private: `toCardData()` (merges the derived `MenuCard` with today's numbers into the renderer input); `buildUpdateItem()` (maps `UpdateState` to the single update menu row); `refreshAppearance()` (re-detects the real menu-bar appearance and repaints anything that depends on it). All menu construction (`buildMenuItems`, `buildAutoRefreshItem`, `buildUpdateItem`, `addFallbackUsageItems`, `updateTitle`, `refreshCard`, `loadIcons`, `rebuildMenu`) is instance-private.
 
 ## Responsibilities
 
@@ -19,8 +21,7 @@ Module-private: `toCardData()` (merges the derived `MenuCard` with today's numbe
 - Run a 60s UI-only timer that rebuilds the menu so "Updated X ago" stays honest between data refreshes — no ccusage call, and it reuses the cached card image. — [tray.ts:19](../../src/tray.ts#L19), [initialize](../../src/tray.ts#L62)
 - On startup, render the two static menu-row glyphs once (Refresh ↻, Dashboard bar-chart) and cache them. — [loadIcons](../../src/tray.ts#L87)
 - Reserve a uniform icon gutter: assign a transparent spacer image to every text row lacking a real glyph so all labels left-align and the real icons stand out. — [buildMenuItems](../../src/tray.ts#L157), [transparentIcon](../../src/tray.ts)
-- Apply pushed `TrayState`: rebuild immediately, then kick off the card's **animated** render **only when its data changed** — an odometer roll and/or a bar-growth reveal, via the owned `CardAnimator`. — [render](../../src/tray.ts#L98), [refreshCard](../../src/tray.ts#L122)
-- Own a `CardAnimator` and feed it two triggers: `onData` on every changed `refreshCard` call, and `setMenuOpen` from the built `Menu`'s own `menu-will-show`/`menu-will-close` events (this is also the ember loop's whole lifecycle — see [ADR-013](../adr/013-menu-card-animation-framework.md)). Every frame it produces lands in `handleCardFrame`: cache it, and if the menu is open right now, mutate the live card `MenuItem.icon` directly (found via `Menu.getMenuItemById`) rather than rebuilding the whole menu. A **full** `rebuildMenu()` only fires once — the first time a card image ever lands — to swap the plain-text fallback rows for the real card row. — [rebuildMenu](../../src/tray.ts), [handleCardFrame](../../src/tray.ts), [card-animator.md](./card-animator.md)
+- Apply pushed `TrayState`: rebuild immediately, then kick off the card's re-render **only when its data changed**. — [render](../../src/tray.ts#L98), [refreshCard](../../src/tray.ts#L122)
 - Set the macOS title to today's cost (`$x.xx`); clear it on error or no daily row. — [updateTitle](../../src/tray.ts#L139)
 - Render the stats card as a **non-selectable** banner (`enabled: false`, no click), with "Open Usage Dashboard…" directly beneath it as the drill-down action. Fall back to plain "Today's Usage" text rows only when the card image is unavailable (first-render gap or a render failure). — [buildMenuItems](../../src/tray.ts#L157), [addFallbackUsageItems](../../src/tray.ts#L217)
 - Stamp the menu's real appearance — resolved via [appearance.ts#detectAppearance](../../src/appearance.ts), not `nativeTheme.shouldUseDarkColors` (see [appearance.md](./appearance.md) for why) — into the card data so the transparent card's value text stays legible, and re-detect/re-render on `nativeTheme` "updated". — [toCardData](../../src/tray.ts), [refreshAppearance](../../src/tray.ts), [handleThemeChange](../../src/tray.ts)
@@ -29,12 +30,12 @@ Module-private: `toCardData()` (merges the derived `MenuCard` with today's numbe
 - Swap the tray image to a **badged** variant when the update status warrants attention (`available` → blue, `downloaded` → orange), else restore the plain template icon. Variants are composited via [tray-icon](./tray-icon.md) from `templateIcon.toBitmap()`, memoized by `${badge}:${appearance}` (the cached, corrected `appearance` field — see below), and re-derived on a light/dark switch; any failure falls back to the template icon. — [refreshTrayIcon](../../src/tray.ts), [handleThemeChange](../../src/tray.ts), [ADR-011 amendment](../adr/011-auto-update-mechanism.md#amendment-attention-cues-2026-07)
 - Cache the menu bar's real light/dark appearance in an instance field (`appearance`) and re-detect it asynchronously via [appearance.ts#detectAppearance](../../src/appearance.ts) at three trigger points — cold start (`initialize`), every update-state transition (`renderUpdate`), and a `nativeTheme` "updated" event — then repaint both the card and the badge from the corrected value. Cheap and infrequent by design; never runs per animation frame. — [refreshAppearance](../../src/tray.ts), [appearance.md](./appearance.md), [ADR-011's reliable-detection amendment](../adr/011-auto-update-mechanism.md#amendment-reliable-menu-bar-appearance-detection-2026-07)
 - Wire menu clicks to the injected `TrayCallbacks`; Quit calls `app.quit()`. — [buildMenuItems](../../src/tray.ts#L157)
-- Tear down the timer, dispose the `CardAnimator` (cancels any pending animation frame), and destroy the tray on dispose (the card window itself is disposed by `main`). — [dispose](../../src/tray.ts#L110)
+- Tear down the timer and destroy the tray on dispose (the card window itself is disposed by `main`). — [dispose](../../src/tray.ts#L110)
 
 ## Non-Goals
 
 - **No data fetching, no refresh scheduling** — the [CaptureService](./capture-service.md) owns the ccusage call and the auto-refresh timer; the tray's only timer is the UI label tick.
-- **No card drawing** — the bitmap is produced by [menu-card-window](./menu-card-window.md) (the hidden window) + [menu-card](./menu-card.md) (the canvas); the tray only caches the resulting `NativeImage` and attaches it.
+- **No card drawing, no animation** — the bitmap is produced by [menu-card-window](./menu-card-window.md) (the hidden window) + [menu-card](./menu-card.md) (the canvas); the tray only caches the resulting `NativeImage` and attaches it via a full menu rebuild.
 - No window lifecycle — opening the dashboard and the About link delegate to `main` via the callbacks.
 - No settings persistence — `onSetRefreshInterval` fires back to `main`, which persists via [settings](./settings.md).
 - No relative-time / interval-label formatting — borrowed from [time](./time.md).
@@ -45,11 +46,9 @@ Module-private: `toCardData()` (merges the derived `MenuCard` with today's numbe
 
 `renderUpdate(state)` stores the `UpdateState`, rebuilds the menu, and kicks off `refreshAppearance()` (async). `buildUpdateItem` switches on `state.status` to pick the row's label and click handler; `idle`/`error` (and the initial/`update-not-available` state) collapse onto the same manual "Check for Updates" action. `refreshTrayIcon` maps the status to a badge via `badgeForStatus`: no badge restores the template icon, otherwise it composites (or reuses a cached) non-template variant for the cached `appearance` field and `setImage`s it. The card bitmap is untouched by the update path.
 
-`initialize()` loads the template icon, starts the 60s label timer, builds the initial (cardless) menu, kicks off `loadIcons` (render + cache the two row glyphs once; this also warms the hidden window), and kicks off `refreshAppearance()` to correct the startup guess (`nativeTheme.shouldUseDarkColors` can be stale or wrong at cold start for a windowless, Dock-hidden app — see [appearance.md](./appearance.md)). Each `render(state)` stores the state and rebuilds immediately (so the title and rows are fresh), then calls `refreshCard`. `refreshCard` builds the renderer input via `toCardData(state, this.appearance)`, hashes it to a JSON signature, and calls `cardAnimator.onData(data)` **only** when the signature changed (so the 60s tick and unchanged re-captures never kick off an animation). The card is a **display-only** banner (`enabled: false`); the drill-down lives in the "Open Usage Dashboard…" row immediately beneath it. On a ccusage error the card is dropped and the menu collapses to a single "Error loading usage data" line.
+`initialize()` loads the template icon, starts the 60s label timer, builds the initial (cardless) menu, kicks off `loadIcons` (render + cache the two row glyphs once; this also warms the hidden window), and kicks off `refreshAppearance()` to correct the startup guess (`nativeTheme.shouldUseDarkColors` can be stale or wrong at cold start for a windowless, Dock-hidden app — see [appearance.md](./appearance.md)). Each `render(state)` stores the state and rebuilds immediately (so the title and rows are fresh), then calls `refreshCard`. `refreshCard` builds the renderer input via `toCardData(state, this.appearance)`, hashes it to a JSON signature, and — **only** when the signature changed (so the 60s tick and unchanged re-captures never trigger a re-render) — awaits `cardRenderer.render(data)`. When that resolves, a signature check guards against a stale, superseded render: if a newer `refreshCard` call already changed `cardSignature` while this one was in flight, the older result is discarded rather than clobbering the newer one. Otherwise it caches the image and calls `rebuildMenu()` again to swap it in. The card is a **display-only** banner (`enabled: false`); the drill-down lives in the "Open Usage Dashboard…" row immediately beneath it. On a ccusage error the card is dropped and the menu collapses to a single "Error loading usage data" line.
 
 `refreshAppearance()` — the async re-detect triggered by `initialize`, `renderUpdate`, and `handleThemeChange` (the `nativeTheme` "updated" listener) — awaits `detectAppearance()`, stores the result in `appearance`, then calls both `refreshCard(this.state)` and `refreshTrayIcon()` so the card text and the badge glyph repaint together from the same corrected value.
-
-Every frame `CardAnimator` produces (whether from a bounded data-change run or the ambient ember loop) lands in `handleCardFrame`: it always updates the cached `cardImage`, and — if `cardMenuItem` is set (the menu is currently built with a real card row) — mutates `cardMenuItem.icon` directly, live, with **no** menu rebuild. The *only* time `handleCardFrame` triggers a full `rebuildMenu()` is the transition from "no card image yet" to "first image landed" (swapping the plain-text fallback for the real row). `rebuildMenu()` itself, each time it runs, rebuilds the `Menu`, looks up the card row via `Menu.getMenuItemById(CARD_MENU_ITEM_ID)` to refresh `cardMenuItem`, and wires that `Menu`'s `menu-will-show`/`menu-will-close` events straight to `cardAnimator.setMenuOpen(true/false)` — that's the ember loop's entire open/close lifecycle. See [card-animator.md](./card-animator.md) and [ADR-013](../adr/013-menu-card-animation-framework.md).
 
 The Auto-Refresh submenu maps `REFRESH_PRESETS_MINUTES` to radio items (0 ⇒ "Manual (off)"); a current value outside the preset set is surfaced as a separate disabled, checked "Custom: …" radio so file-edited intervals stay visible. — [buildAutoRefreshItem](../../src/tray.ts#L189)
 
@@ -63,16 +62,11 @@ flowchart LR
     render --> rebuild
     renderUpd --> rebuild
     render --> refresh["refreshCard() (signature-cached)"]
-    refresh --> animator["cardAnimator.onData()"]
-    menuEvents["Menu menu-will-show/close"] --> setOpen["cardAnimator.setMenuOpen()"]
-    animator --> loop["CardAnimator loop (card-animator.ts)"]
-    setOpen --> loop
-    loop --> frame["MenuCardRenderer.renderFrame() → NativeImage"]
-    frame --> handleFrame["handleCardFrame(image)"]
-    handleFrame -->|mutate live icon| liveIcon["cardMenuItem.icon = image"]
-    handleFrame -->|first image only| rebuild
+    refresh --> cardRender["MenuCardRenderer.render() → NativeImage"]
+    cardRender -->|"signature still current"| cacheImg["cache image"]
+    cacheImg --> rebuild
     rebuild --> title["updateTitle()"]
-    rebuild --> menu["buildMenuItems() → setContextMenu() → getMenuItemById()"]
+    rebuild --> menu["buildMenuItems() → setContextMenu()"]
     menu --> cbs["TrayCallbacks: onOpenDashboard / onRefreshNow / onSetRefreshInterval / onAbout / onCheckForUpdates / onDownloadUpdate / onRestartToUpdate"]
     init --> refreshApp["refreshAppearance()"]
     renderUpd --> refreshApp
@@ -99,9 +93,10 @@ flowchart LR
 - Title is set only on darwin; cleared on `usage.error` or missing daily row. — [updateTitle](../../src/tray.ts#L139)
 - **Card is non-interactive**: it's an `enabled: false` image banner — selection/hover highlighting is suppressed, and the dashboard drill-down lives in the row beneath it. — [buildMenuItems](../../src/tray.ts#L157)
 - On a ccusage error the service pushes `usage.error`; the menu collapses the card to a single "Error loading usage data" line (Dashboard/Updated/Refresh/About/Quit still render), and the cached card image is cleared. — [render](../../src/tray.ts#L98), [buildMenuItems](../../src/tray.ts#L157)
-- **Card cache is load-bearing for the label tick**: kicking off the animator only when the JSON signature changes keeps the 60s tick and unchanged re-captures from spawning an animation run. — [refreshCard](../../src/tray.ts#L122)
-- **Animation triggers only on a real change, never on a rebuild**: `refreshCard` calls `cardAnimator.onData` only when the signature changed; a theme switch changes the signature too (it carries `dark`) and re-renders the card, but the animation *engine* itself (in `card.ts`) deliberately excludes `dark` from its own "did the stats change" check, so a theme-only switch recolors without replaying the odometer/bar animations. See [menu-card.md](./menu-card.md).
-- **Live icon mutation, not a rebuild, on every animation frame**: `handleCardFrame` sets `cardMenuItem.icon` directly; only the very first frame ever (fallback → real card) triggers `rebuildMenu()`. Rebuilding on every frame would mean tearing down/re-showing the context menu ~24 times a second while animating. — [handleCardFrame](../../src/tray.ts), [ADR-013](../adr/013-menu-card-animation-framework.md)
+- **Card cache is load-bearing for the label tick**: re-rendering only when the JSON signature changes keeps the 60s tick and unchanged re-captures from spawning an extra render + menu rebuild. — [refreshCard](../../src/tray.ts#L122)
+- **A stale render can't clobber a newer one**: `refreshCard`'s async `render(data)` call is guarded by re-checking `cardSignature` when it resolves; if a newer refresh already landed and changed it, the older result is dropped instead of overwriting `cardImage`. — [refreshCard](../../src/tray.ts)
+- **The card never animates**: a theme switch changes the data signature (it carries `dark`) and re-renders the card once, but there's no tween/particle state to replay or exclude — see [ADR-013's amendments](../adr/013-menu-card-animation-framework.md#amendment-full-removal-2026-07) for why the odometer/bar-growth/ember animations that used to live here were removed.
+- **A full menu rebuild on every card change, not a live icon mutation**: unlike the removed animation framework (which mutated a live `MenuItem.icon` in place to avoid rebuilding ~24×/sec), a card re-render is infrequent enough (tied to actual data changes, not a frame poll) that `rebuildMenu()` on every change is simple and sufficient.
 - **Icons are best-effort & cached**: rendered once at startup; if `renderIcon` returns `null` the rows simply show no icon. — [loadIcons](../../src/tray.ts#L87)
 - **Badge is best-effort & non-template**: the badged variant is a runtime-composited non-template image (so light/dark is handled in code, not by macOS auto-tinting); a compose failure falls back to the plain template icon so the menu bar never goes blank. Only `available`/`downloaded` badge — every other status shows the template. — [refreshTrayIcon](../../src/tray.ts), [tray-icon](./tray-icon.md), [ADR-004](../adr/004-template-tray-icon.md)
 - **Appearance is a cached field, actively corrected — not a live `nativeTheme` read**: `appearance` starts from a best-effort `nativeTheme.shouldUseDarkColors` guess and is corrected asynchronously by `refreshAppearance()` at cold start, on every update-state transition, and on `nativeTheme` "updated". Both `refreshTrayIcon` and `toCardData` read the cached field, never `nativeTheme` directly — see [appearance.md](./appearance.md) for why `nativeTheme` alone is unreliable for the tray. — [refreshAppearance](../../src/tray.ts), [ADR-011's reliable-detection amendment](../adr/011-auto-update-mechanism.md#amendment-reliable-menu-bar-appearance-detection-2026-07)
@@ -113,11 +108,11 @@ flowchart LR
 
 - To add a menu row, extend `buildMenuItems`. — [buildMenuItems](../../src/tray.ts#L157)
 - To change what the card shows, edit [menu-card](./menu-card.md) (the canvas) and the `MenuCard`/`MenuCardData` contracts in [types](./types.md); feed new figures from [capture-service](./capture-service.md)'s `computeCard`.
-- To change how/when the card animates, edit [menu-card](./menu-card.md)/[animation-config.ts](../../src/menu-card/animation-config.ts) (the visuals) or [card-animator.md](./card-animator.md) (the polling cadence/lifecycle) — `tray.ts`'s wiring (construct once, feed `onData`/`setMenuOpen`) stays as-is for a new animation.
 - To add a menu-row icon, add a glyph to `__burnbarDrawIcon` in [menu-card](./menu-card.md) and render it in `loadIcons`. — [loadIcons](../../src/tray.ts#L87)
 - To change the update badge (colors, which states badge, geometry), edit [tray-icon](./tray-icon.md) — `BADGE_RGB`, `badgeForStatus`, and `composeBadgedIconBitmap`; the tray's `refreshTrayIcon` wiring stays as-is.
 - New refresh presets: edit `REFRESH_PRESETS_MINUTES`; the "Custom" fallback then narrows automatically. — [settings.ts:9](../../src/settings.ts#L9)
 - The icon path assumes `assets/icon.png` sits one level up from `dist/`; keep that layout when changing packaging. — [initialize](../../src/tray.ts#L63)
+- **Considering a card animation?** Read [ADR-013's amendments](../adr/013-menu-card-animation-framework.md#amendment-the-verification-item-resolved-false-2026-07) first — an odometer roll, bar-growth reveal, and ember particles were all tried and removed because a `MenuItem` icon inside a native `Menu` is never repainted while the dropdown is already open. Target the always-visible tray icon (`Tray.setImage()`, e.g. issue #51) instead.
 
 ## Related Files
 
@@ -126,14 +121,13 @@ flowchart LR
 - [tray-icon.ts](../../src/tray-icon.ts) → [tray-icon.md](./tray-icon.md) — the pure badge compositor `refreshTrayIcon` calls.
 - [appearance.ts](../../src/appearance.ts) → [appearance.md](./appearance.md) — resolves the real menu-bar appearance `refreshAppearance()` caches; both `refreshTrayIcon` and `toCardData` consume the cached field.
 - [update-notifier.ts](../../src/update-notifier.ts) → [update-notifier.md](./update-notifier.md) — the companion notifier for the same `UpdateState` transitions.
-- [menu-card-window.ts](../../src/menu-card-window.ts) → [menu-card-window.md](./menu-card-window.md) — the injected `MenuCardRenderer` that rasterizes each card frame.
-- [card-animator.ts](../../src/card-animator.ts) → [card-animator.md](./card-animator.md) — the frame-poll loop the tray owns and feeds.
-- [menu-card/](../../src/menu-card/) → [menu-card.md](./menu-card.md) — the browser-context canvas that draws and animates the card.
+- [menu-card-window.ts](../../src/menu-card-window.ts) → [menu-card-window.md](./menu-card-window.md) — the injected `MenuCardRenderer` that rasterizes the card.
+- [menu-card/](../../src/menu-card/) → [menu-card.md](./menu-card.md) — the browser-context canvas that draws the card.
 - [main.ts](../../src/main.ts) — wires the `TrayCallbacks` (incl. `onAbout` → [`AboutWindow`](./about-window.md), `onCheckForUpdates`/`onDownloadUpdate`/`onRestartToUpdate` → `UpdateService`) and the `MenuCardRenderer` to the service, window, and settings.
 - [window.ts](../../src/window.ts) — opened by the card row and the dashboard menu item.
 - [about-window.ts](../../src/about-window.ts) — opened by the About Burnbar row.
 - [time.ts](../../src/time.ts) — the relative-time / interval-label formatters.
 - [settings.ts](../../src/settings.ts) — `REFRESH_PRESETS_MINUTES` and interval persistence.
-- Sibling docs: [capture-service](./capture-service.md), [update-service](./update-service.md), [settings](./settings.md), [menu-card-window](./menu-card-window.md), [card-animator](./card-animator.md), [menu-card](./menu-card.md), [time](./time.md), [window](./window.md), [about-window](./about-window.md), [types](./types.md).
+- Sibling docs: [capture-service](./capture-service.md), [update-service](./update-service.md), [settings](./settings.md), [menu-card-window](./menu-card-window.md), [menu-card](./menu-card.md), [time](./time.md), [window](./window.md), [about-window](./about-window.md), [types](./types.md).
 - Feature: [usage-menu.md](../features/usage-menu.md), [usage-refresh.md](../features/usage-refresh.md), [usage-dashboard.md](../features/usage-dashboard.md), [about.md](../features/about.md), [auto-update.md](../features/auto-update.md).
-- ADR: [adr/013-menu-card-animation-framework.md](../adr/013-menu-card-animation-framework.md).
+- ADR: [adr/013-menu-card-animation-framework.md](../adr/013-menu-card-animation-framework.md) — the animation framework this module used to own, why it was removed.

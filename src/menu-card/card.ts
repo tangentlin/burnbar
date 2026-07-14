@@ -1,32 +1,21 @@
-import type { CardFrame, MenuCardData } from "../types.js";
-import {
-  createEmberField,
-  createTween,
-  type EmberField,
-  type EmberInstance,
-  emberInstancesAt,
-  tweenDone,
-  tweenProgress,
-} from "./animation.js";
-import { BARS, EMBER_SEED, EMBERS, ODOMETER } from "./animation-config.js";
+import type { MenuCardData } from "../types.js";
 
 // Browser-context renderer for the tray's "stats card". The main process drives
-// it through `window.__burnbarRenderCardFrame(data, nowMs)` (see
-// menu-card-window.ts), which paints an off-DOM <canvas> for the given instant
-// and returns a PNG data URL plus whether more frames are needed. Pure(-ish;
-// see `session` below) draw → string: no network, no DOM mutation beyond the
-// throwaway canvas, no Electron — just Canvas 2D.
+// it through `window.__burnbarDrawCard(data)` (see menu-card-window.ts), which
+// paints an off-DOM <canvas> and returns a PNG data URL. Pure draw → string: no
+// network, no DOM mutation beyond the throwaway canvas, no Electron — just
+// Canvas 2D.
 //
-// Animation state (`session`) is module-scoped rather than passed in, because
-// the hidden BrowserWindow that hosts this page is created once and reused for
-// the app's lifetime (see ADR-009) — the main process only supplies the latest
-// data and the current time; this module remembers what it last drew so it can
-// tell an odometer roll or bar-chart growth apart from a static re-render.
+// The card previously animated (an odometer-style digit roll, a bar-chart
+// grow-from-baseline reveal, and drifting ember particles — issues #52/#53/#54,
+// see ADR-013). All three were removed: Electron only repaints a MenuItem's
+// icon right before a menu opens or once it closes, never while the native
+// tray dropdown is already open and idle, so none of the three animations
+// could ever actually be seen. See ADR-013's amendments.
 
 declare global {
   interface Window {
-    __burnbarRenderCardFrame: (data: MenuCardData, nowMs: number) => CardFrame;
-    __burnbarSetEmbersActive: (active: boolean, nowMs: number) => void;
+    __burnbarDrawCard: (data: MenuCardData) => string;
     // Tiny monochrome menu-row glyphs; the main process marks them template images.
     __burnbarDrawIcon: (name: "refresh" | "dashboard") => string;
   }
@@ -53,7 +42,6 @@ const FOOT = "#73737f";
 const BAR_TOP = "#e08b54";
 const BAR_BOTTOM = "#c4744a";
 const AXIS = "rgba(255, 255, 255, 0.06)";
-const EMBER_RGB = "232, 141, 84"; // same warm hue family as the bars
 
 const FONT_STACK = `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif`;
 const LABEL_FONT = `600 11px ${FONT_STACK}`;
@@ -64,153 +52,30 @@ const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFra
 const money = (value: number | null): string => (value === null ? "—" : usd.format(value));
 const tokens = (value: number | null): string => (value === null ? "—" : compact.format(value));
 
-// --- Odometer digit-roll (issue #52) ---------------------------------------
-
-function isDigit(ch: string): boolean {
-  return ch >= "0" && ch <= "9";
-}
-
-/** Right-align two strings to the same length by left-padding the shorter with spaces. */
-function alignForRoll(fromText: string, toText: string): { from: string; to: string } {
-  const width = Math.max(fromText.length, toText.length);
-  return { from: fromText.padStart(width, " "), to: toText.padStart(width, " ") };
-}
-
-function fontSizePx(font: string): number {
-  const match = /(\d+(?:\.\d+)?)px/.exec(font);
-  return match ? Number(match[1]) : 16;
-}
-
-// The rolling value's character set is small and fixed (digits, currency
-// symbol, separators, the compact-notation suffixes) against one font, so
-// per-character widths are fully cacheable — avoids a `measureText` call per
-// character on every animating frame (up to ~4 stats × several columns, up to
-// ~24×/sec). `ctx.font` must already equal `font` when this is called.
-const glyphWidthCache = new Map<string, number>();
-
-function glyphWidth(ctx: CanvasRenderingContext2D, font: string, char: string): number {
-  const key = `${font} ${char}`;
-  const cached = glyphWidthCache.get(key);
-  if (cached !== undefined) {
-    return cached;
-  }
-  const width = ctx.measureText(char).width;
-  glyphWidthCache.set(key, width);
-  return width;
-}
-
-/**
- * Draws `toText`, rolling in from `fromText` when they differ: each digit
- * column that changed slides the old glyph out and the new one in (clipped to
- * its own row, like a mechanical odometer wheel), staggered left→right.
- * Non-digit characters (currency symbol, comma, decimal point) never roll —
- * only the numerals animate. Returns whether any column is still mid-roll.
- */
-function drawRollingValue(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  font: string,
-  color: string,
-  toText: string,
-  fromText: string | null,
-  rollStartMs: number | null,
-  nowMs: number,
-): boolean {
-  ctx.font = font;
-  ctx.fillStyle = color;
-  if (rollStartMs === null || fromText === null || fromText === toText) {
-    ctx.fillText(toText, x, y);
-    return false;
-  }
-
-  const { from, to } = alignForRoll(fromText, toText);
-  const rowHeight = fontSizePx(font) * 1.35;
-  let cursorX = x;
-  let stillAnimating = false;
-
-  for (let i = 0; i < to.length; i++) {
-    const toChar = to[i] ?? " ";
-    const fromChar = from[i] ?? " ";
-    const measureChar = toChar === " " ? "0" : toChar;
-    const charWidth = glyphWidth(ctx, font, measureChar);
-
-    if (toChar === fromChar) {
-      ctx.fillText(toChar, cursorX, y);
-    } else if (isDigit(toChar)) {
-      const tween = createTween(
-        rollStartMs,
-        ODOMETER.durationMs,
-        ODOMETER.easing,
-        i * ODOMETER.staggerMs,
-      );
-      const progress = tweenProgress(tween, nowMs);
-      if (!tweenDone(tween, nowMs)) {
-        stillAnimating = true;
-      }
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(cursorX - 1, y - 2, charWidth + 2, rowHeight);
-      ctx.clip();
-      const exitY = y - rowHeight * progress; // old glyph slides up and out
-      const enterY = y + rowHeight * (1 - progress); // new glyph slides up and in
-      if (isDigit(fromChar)) {
-        ctx.fillText(fromChar, cursorX, exitY);
-      }
-      ctx.fillText(toChar, cursorX, enterY);
-      ctx.restore();
-    } else {
-      ctx.fillText(toChar, cursorX, y);
-    }
-    cursorX += charWidth;
-  }
-  return stillAnimating;
-}
-
-/** A label + its (possibly rolling) bold value. Returns whether the value is still mid-roll. */
+/** A label + its bold value. */
 function drawStat(
   ctx: CanvasRenderingContext2D,
   x: number,
   top: number,
   label: string,
-  toValue: string,
-  fromValue: string | null,
-  rollStartMs: number | null,
-  nowMs: number,
+  value: string,
   valueColor: string,
-): boolean {
+): void {
   ctx.fillStyle = LABEL;
   ctx.font = LABEL_FONT;
   ctx.fillText(label, x, top);
-  return drawRollingValue(
-    ctx,
-    x,
-    top + 14,
-    VALUE_FONT,
-    valueColor,
-    toValue,
-    fromValue,
-    rollStartMs,
-    nowMs,
-  );
+  ctx.font = VALUE_FONT;
+  ctx.fillStyle = valueColor;
+  ctx.fillText(value, x, top + 14);
 }
 
-// --- Bar chart + grow-from-baseline reveal (issue #54) ---------------------
-
-/**
- * Warm bar chart of the 30-day daily costs over a faint baseline axis. When
- * `growStartMs` is set, each bar grows from the baseline to its target height
- * (eased, staggered left→right); `null` renders at full height immediately
- * (todays's static look). Returns whether any bar is still mid-growth.
- */
+/** Warm bar chart of the 30-day daily costs over a faint baseline axis. */
 function drawBars(
   ctx: CanvasRenderingContext2D,
   costs: number[],
   top: number,
   height: number,
-  growStartMs: number | null,
-  nowMs: number,
-): boolean {
+): void {
   const innerW = W - PAD * 2;
   const baseline = top + height;
 
@@ -219,7 +84,7 @@ function drawBars(
 
   const max = Math.max(...costs, 0);
   if (max <= 0) {
-    return false;
+    return;
   }
   const gap = 2;
   const count = Math.max(costs.length, 1);
@@ -229,65 +94,23 @@ function drawBars(
   gradient.addColorStop(1, BAR_BOTTOM);
   ctx.fillStyle = gradient;
 
-  let stillAnimating = false;
   for (let i = 0; i < costs.length; i++) {
     const value = Math.max(0, costs[i] ?? 0);
     if (value <= 0) {
       continue;
     }
-    let progress = 1;
-    if (growStartMs !== null) {
-      const tween = createTween(growStartMs, BARS.durationMs, BARS.easing, i * BARS.staggerMs);
-      progress = tweenProgress(tween, nowMs);
-      if (!tweenDone(tween, nowMs)) {
-        stillAnimating = true;
-      }
-    }
-    const rawH = (value / max) * height * progress;
-    if (rawH < 0.5) {
-      continue; // avoid a flash of 1px bars before growth has really started
-    }
-    const barH = Math.max(1, Math.round(rawH));
+    const barH = Math.max(1, Math.round((value / max) * height));
     const x = PAD + i * (barW + gap);
     ctx.beginPath();
     ctx.roundRect(x, baseline - barH, barW, barH, Math.min(1.5, barW / 2));
     ctx.fill();
   }
-  return stillAnimating;
 }
-
-// --- Ember particles (issue #53) --------------------------------------------
-
-function drawEmbers(ctx: CanvasRenderingContext2D, instances: EmberInstance[]): void {
-  const region = { x: PAD, width: W - PAD * 2, top: BARS_TOP };
-  for (const instance of instances) {
-    if (instance.opacity <= 0.01) {
-      continue;
-    }
-    const x = region.x + instance.xFrac * region.width;
-    const y = region.top - instance.riseFrac * EMBERS.riseDistance;
-    ctx.save();
-    ctx.fillStyle = `rgba(${EMBER_RGB}, ${instance.opacity.toFixed(3)})`;
-    ctx.shadowColor = `rgba(${EMBER_RGB}, ${Math.min(1, instance.opacity * 1.4).toFixed(3)})`;
-    ctx.shadowBlur = instance.radius * 2.5;
-    ctx.beginPath();
-    ctx.arc(x, y, instance.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-}
-
-// --- Layout + orchestration --------------------------------------------------
 
 type CardCanvas = { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D };
 let sharedCard: CardCanvas | null = null;
 
-/**
- * Lazily creates one canvas+context and reuses it for every frame. `paintCard`
- * runs up to ~24×/sec while animating (indefinitely while embers are active),
- * so allocating a fresh backing store per frame would be wasteful — each call
- * fully repaints anyway, so a cleared, reused canvas is behaviorally identical.
- */
+/** Lazily creates one canvas+context and reuses it across renders (each call fully repaints anyway). */
 function cardCanvas(): CardCanvas | null {
   if (sharedCard) {
     return sharedCard;
@@ -307,22 +130,14 @@ type StatSpec = {
   x: number;
   top: number;
   label: string;
-  toValue: string;
-  fromValue: string | null;
+  value: string;
 };
 
-/** Paints one frame given already-resolved animation state; owns no session/timing bookkeeping. */
-function paintCard(
-  data: MenuCardData,
-  prevForRoll: MenuCardData | null,
-  odometerStartMs: number | null,
-  barsStartMs: number | null,
-  nowMs: number,
-  emberInstances: EmberInstance[] | null,
-): CardFrame {
+/** Renders the stats card as a PNG data URL; `""` on a canvas-context failure. */
+export function drawCard(data: MenuCardData): string {
   const card = cardCanvas();
   if (!card) {
-    return { png: "", animating: false };
+    return "";
   }
   const { canvas, ctx } = card;
   ctx.resetTransform();
@@ -334,57 +149,16 @@ function paintCard(
   // the value text adapts to the menu appearance.
   const valueColor = data.dark ? VALUE_DARK : VALUE_LIGHT;
   const stats: StatSpec[] = [
-    {
-      x: COL_X[0]!,
-      top: 18,
-      label: "Today",
-      toValue: money(data.todayCost),
-      fromValue: prevForRoll ? money(prevForRoll.todayCost) : null,
-    },
-    {
-      x: COL_X[1]!,
-      top: 18,
-      label: "30d cost",
-      toValue: money(data.cost30d),
-      fromValue: prevForRoll ? money(prevForRoll.cost30d) : null,
-    },
-    {
-      x: COL_X[0]!,
-      top: 66,
-      label: "30d tokens",
-      toValue: tokens(data.tokens30d),
-      fromValue: prevForRoll ? tokens(prevForRoll.tokens30d) : null,
-    },
-    {
-      x: COL_X[1]!,
-      top: 66,
-      label: "Today tokens",
-      toValue: tokens(data.todayTokens),
-      fromValue: prevForRoll ? tokens(prevForRoll.todayTokens) : null,
-    },
+    { x: COL_X[0]!, top: 18, label: "Today", value: money(data.todayCost) },
+    { x: COL_X[1]!, top: 18, label: "30d cost", value: money(data.cost30d) },
+    { x: COL_X[0]!, top: 66, label: "30d tokens", value: tokens(data.tokens30d) },
+    { x: COL_X[1]!, top: 66, label: "Today tokens", value: tokens(data.todayTokens) },
   ];
-  let animating = false;
   for (const stat of stats) {
-    animating =
-      drawStat(
-        ctx,
-        stat.x,
-        stat.top,
-        stat.label,
-        stat.toValue,
-        stat.fromValue,
-        odometerStartMs,
-        nowMs,
-        valueColor,
-      ) || animating;
+    drawStat(ctx, stat.x, stat.top, stat.label, stat.value, valueColor);
   }
 
-  animating = drawBars(ctx, data.spark, BARS_TOP, BARS_HEIGHT, barsStartMs, nowMs) || animating;
-
-  if (emberInstances && emberInstances.length > 0) {
-    drawEmbers(ctx, emberInstances);
-    animating = true;
-  }
+  drawBars(ctx, data.spark, BARS_TOP, BARS_HEIGHT);
 
   if (data.topModel) {
     ctx.fillStyle = LABEL;
@@ -395,123 +169,11 @@ function paintCard(
   ctx.font = `400 10px ${FONT_STACK}`;
   ctx.fillText("Estimated from local logs at API rates", PAD, 188);
 
-  return { png: canvas.toDataURL("image/png"), animating };
+  return canvas.toDataURL("image/png");
 }
 
-/** Numeric card fields that drive the odometer roll (deliberately excludes `dark`: a theme toggle must not replay it). */
-function statsEqual(a: MenuCardData, b: MenuCardData): boolean {
-  return (
-    a.todayCost === b.todayCost &&
-    a.cost30d === b.cost30d &&
-    a.tokens30d === b.tokens30d &&
-    a.todayTokens === b.todayTokens
-  );
-}
-
-function sparkEqual(a: number[], b: number[]): boolean {
-  return a.length === b.length && a.every((value, i) => value === b[i]);
-}
-
-export type CardSession = {
-  data: MenuCardData;
-  // The stat values to roll *from* — snapshotted only at the instant a roll
-  // starts, then left untouched for the rest of that roll's duration. `data`
-  // itself is NOT reusable for this: `CardAnimator` polls with the same
-  // `data` reference across many frames of a run, so `data` becomes equal to
-  // the *target* values from the second frame onward — using it as the "from"
-  // snapshot would make `drawRollingValue`'s `fromText === toText` fast path
-  // fire after a single frame, cutting the roll short.
-  rollFromData: MenuCardData | null;
-  odometerStartMs: number | null;
-  barsStartMs: number | null;
-  emberField: EmberField | null;
-};
-
-/**
- * Pure state transition: given the previous session (or `null` on first
- * paint) and the latest `data`/`nowMs`, decides whether an odometer roll
- * and/or a bar-growth reveal should (re)start. No DOM/canvas — kept separate
- * from `renderCardFrame` specifically so this decision is unit-testable
- * (`test/menu-card-animation.test.ts`) without a browser environment.
- */
-export function nextCardSession(
-  session: CardSession | null,
-  data: MenuCardData,
-  nowMs: number,
-): CardSession {
-  const prev = session?.data ?? null;
-  let odometerStartMs = session?.odometerStartMs ?? null;
-  let barsStartMs = session?.barsStartMs ?? null;
-  let rollFromData = session?.rollFromData ?? null;
-
-  if (prev && !statsEqual(prev, data)) {
-    odometerStartMs = nowMs;
-    rollFromData = prev; // snapshot the pre-change values; held fixed for the roll's duration
-  }
-  if (!prev || !sparkEqual(prev.spark, data.spark)) {
-    barsStartMs = nowMs;
-  }
-
-  return {
-    data,
-    rollFromData,
-    odometerStartMs,
-    barsStartMs,
-    emberField: session?.emberField ?? null,
-  };
-}
-
-let session: CardSession | null = null;
-
-/** Forget animation history (used by Storybook/tests so switching examples starts clean). */
-export function resetCardSession(): void {
-  session = null;
-}
-
-/**
- * Renders the card as of `nowMs`, advancing/starting whichever tweens the
- * latest `data` warrants: an odometer roll starts only when a *previous*
- * paint's stat numbers differ from the new ones (never on first paint — there
- * is nothing to roll from); a bar-growth reveal starts on first paint *and*
- * whenever the spark series changes. Ember particles ride along whenever
- * `setEmbersActive` last turned them on.
- */
-export function renderCardFrame(data: MenuCardData, nowMs: number): CardFrame {
-  session = nextCardSession(session, data, nowMs);
-  const emberInstances = session.emberField
-    ? emberInstancesAt(session.emberField, EMBERS, nowMs)
-    : null;
-
-  const frame = paintCard(
-    data,
-    session.rollFromData,
-    session.odometerStartMs,
-    session.barsStartMs,
-    nowMs,
-    emberInstances,
-  );
-  return frame;
-}
-
-/** Start/stop the ember loop (menu open/close). The pattern's *shape* (particle positions/sizes) stays fixed across activations via `EMBER_SEED` — only its start time is fresh — so it reads as a stable motif, not a reshuffled scatter each time the menu opens. */
-export function setEmbersActive(active: boolean, nowMs: number): void {
-  if (!session) {
-    return; // nothing rendered yet to animate embers over
-  }
-  session = { ...session, emberField: active ? createEmberField(EMBER_SEED, nowMs, EMBERS) : null };
-}
-
-/** A fully static render (no rolls, no growth, no embers) — the settled look, also used by Storybook's reference story. */
-export function drawCard(data: MenuCardData): string {
-  return paintCard(data, null, null, null, 0, null).png;
-}
-
-// Guarded so this module stays importable from plain Node (Vitest, no DOM)
-// for the pure exports (e.g. `nextCardSession`) — in the browser, `window`
-// is always defined and this always runs.
 if (typeof window !== "undefined") {
-  window.__burnbarRenderCardFrame = renderCardFrame;
-  window.__burnbarSetEmbersActive = setEmbersActive;
+  window.__burnbarDrawCard = drawCard;
 }
 
 // --- Menu-row icons -------------------------------------------------------

@@ -53,16 +53,20 @@
 
 ## ADRs
 
-| ADR | Decision |
-|-----|----------|
-| [001](./adr/001-ccusage-cli-shell-out.md) | Consume ccusage via its CLI, not as a library |
-| [002](./adr/002-electron-run-as-node.md) | Run ccusage through the app's runtime via `ELECTRON_RUN_AS_NODE` |
-| [003](./adr/003-single-call-derive-today.md) | One CLI call; derive "today" from the daily report |
-| [004](./adr/004-template-tray-icon.md) | Use a macOS template image for the tray icon |
-| [005](./adr/005-env-driven-signing-notarization.md) | Drive signing & notarization from env vars |
-| [006](./adr/006-durable-usage-archive.md) | A durable, numbers-only usage archive in `userData` |
-| [007](./adr/007-keep-richest-merge.md) | "Keep richest, never shrink" merge (anti-purge) |
-| [008](./adr/008-dashboard-window-bundle.md) | Dashboard: ESM preload, sandbox, separate renderer bundle |
-| [009](./adr/009-menu-stats-card.md) | Menu stats card via a hidden-window canvas, replacing the template sparkline |
-| [010](./adr/010-production-entitlements.md) | Remove debugger entitlements from production builds |
-| [011](./adr/011-auto-update-mechanism.md) | Tray-only auto-update via electron-updater + GitHub Releases |
+An ADR records *why* a decision was made — including ones later reverted. It is **not** a description of current behavior; for that, use the [Modules](#modules)/[Features](#features) docs above, which are kept in sync with the code as it exists today. Check **Status** before assuming an ADR describes something still in the codebase.
+
+| ADR | Decision | Status |
+|-----|----------|--------|
+| [001](./adr/001-ccusage-cli-shell-out.md) | Consume ccusage via its CLI, not as a library | Accepted |
+| [002](./adr/002-electron-run-as-node.md) | Run ccusage through the app's runtime via `ELECTRON_RUN_AS_NODE` | Accepted |
+| [003](./adr/003-single-call-derive-today.md) | One CLI call; derive "today" from the daily report | Accepted |
+| [004](./adr/004-template-tray-icon.md) | Use a macOS template image for the tray icon | Accepted |
+| [005](./adr/005-env-driven-signing-notarization.md) | Drive signing & notarization from env vars | Accepted |
+| [006](./adr/006-durable-usage-archive.md) | A durable, numbers-only usage archive in `userData` | Accepted |
+| [007](./adr/007-keep-richest-merge.md) | "Keep richest, never shrink" merge (anti-purge) | Accepted |
+| [008](./adr/008-dashboard-window-bundle.md) | Dashboard: ESM preload, sandbox, separate renderer bundle | Accepted |
+| [009](./adr/009-menu-stats-card.md) | Menu stats card via a hidden-window canvas, replacing the template sparkline | Accepted |
+| [010](./adr/010-production-entitlements.md) | Remove debugger entitlements from production builds | Accepted |
+| [011](./adr/011-auto-update-mechanism.md) | Tray-only auto-update via electron-updater + GitHub Releases | Accepted (amended) |
+| [012](./adr/012-ccusage-binary-chmod-before-sign.md) | chmod ccusage's native binary in `afterPack`, before signing | Accepted |
+| [013](./adr/013-menu-card-animation-framework.md) | Menu-card animation framework (odometer roll, bar growth, ember particles) | **Superseded — fully reverted**; see its amendments |
