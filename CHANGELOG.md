@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.9.0] - 2026-07-14
+
+## What's Changed
+* Group troubleshooting actions into submenu by @tangentlin in https://github.com/tangentlin/burnbar/pull/69
+* Remove odometer and bar-growth animations (ADR-013 amendment) by @tangentlin in https://github.com/tangentlin/burnbar/pull/68
+
+
+**Full Changelog**: https://github.com/tangentlin/burnbar/compare/v0.8.1...v0.9.0
+
 ## [v0.8.1] - 2026-07-12
 
 ## What's Changed
